@@ -1,0 +1,13 @@
+{
+  "name": "hoje",
+  "owner": {
+    "name": "MrHoje"
+  },
+  "plugins": [
+    {
+      "name": "hoje-code",
+      "source": "./plugins/hoje-code",
+      "description": "deep-ask, gate-plan, run-goals workflow skills ported from gajae-code"
+    }
+  ]
+}
