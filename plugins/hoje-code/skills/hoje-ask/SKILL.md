@@ -168,7 +168,7 @@ Round {n} 완료.
 
 ### 4c. 스펙 파일 생성
 
-저장 경로: `docs/deep-ask-{slug}.md`
+저장 경로: `docs/hoje-ask-{slug}.md`
 `docs/` 폴더가 없으면 자동 생성 후 저장.
 
 ```markdown
