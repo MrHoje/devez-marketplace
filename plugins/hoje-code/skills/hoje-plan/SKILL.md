@@ -1,5 +1,5 @@
 ---
-name: gate-plan
+name: hoje-plan
 description: 모호한 실행 요청을 차단하고 Planner→Architect→Critic 합의 루프로 계획을 수립하는 게이트키퍼. 실행 전 항상 거쳐야 하는 계획 관문.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: run-goals
+name: hoje-goals
 description: brief를 @goal 블록으로 분리하고 각 goal을 품질 게이트와 함께 순차 완료하는 구조적 실행 시스템.
 ---
 
