@@ -32,6 +32,6 @@ Claude Code에서:
 
 ## 포함 스킬
 
-- `deep-ask` — 모호한 아이디어를 소크라테스식 질문으로 스펙까지 끌어올리는 인터뷰어
-- `gate-plan` — Planner→Architect→Critic 합의로 계획을 수립하는 게이트키퍼
-- `run-goals` — @goal 블록 기반 품질 게이트 포함 순차 실행 시스템
+- `hoje-ask` — 모호한 아이디어를 소크라테스식 질문으로 스펙까지 끌어올리는 인터뷰어
+- `hoje-plan` — Planner→Architect→Critic 합의로 계획을 수립하는 게이트키퍼
+- `hoje-goals` — @goal 블록 기반 품질 게이트 포함 순차 실행 시스템
