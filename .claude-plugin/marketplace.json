@@ -1,13 +1,13 @@
 {
-  "name": "hoje",
+  "name": "devez-marketplace",
   "owner": {
     "name": "MrHoje"
   },
   "plugins": [
     {
-      "name": "hoje-code",
-      "source": "./plugins/hoje-code",
-      "description": "deep-ask, gate-plan, run-goals workflow skills ported from gajae-code"
+      "name": "devez-code",
+      "source": "./plugins/devez-code",
+      "description": "deep-ask, gate-plan, run-goals workflow skills"
     }
   ]
 }
