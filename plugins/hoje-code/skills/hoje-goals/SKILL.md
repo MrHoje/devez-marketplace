@@ -1,127 +1,101 @@
 ---
 name: hoje-goals
 description: brief를 @goal 블록으로 분리하고 각 goal을 품질 게이트와 함께 순차 완료하는 구조적 실행 시스템.
+level: 4
 ---
 
-# Run-Goals (Structured Goal Execution)
+# Hoje-Goals (구조적 목표 실행)
 
-> **우선순위 규칙**: 이 스킬이 로드되면 `executing-plans` 스킬을 자동 호출하지 않는다.
-> 실행은 run-goals가 담당한다. executing-plans는 사용자가 명시적으로 요청할 때만 허용.
+`.hoje/_session-{sessionid}/ultragoal/goals.json`이 goal ID/상태의 정규 소스이며, `ledger.jsonl`이 체크포인트/블로커/조정 감사 내역이다. 인라인 goal 도구는 UX 브리지 전용이다.
 
-brief를 받아 goal로 분리하고, 각 goal을 **구현 → 품질 게이트 → 체크포인트** 루프로 순차 완료한다.
-
-## Brief 구조
+## 명령어
 
 ```
-공유 컨텍스트 / 제약사항 (선택적 서문)
-
-@goal: 첫 번째 목표 제목
-상세 설명. 여러 줄 가능.
-
-@goal: 두 번째 목표 제목
-상세 설명.
+hoje goals create-goals --brief "<brief>"
+hoje goals create-goals --brief-file <path>
+hoje goals complete-goals
+hoje goals complete-goals --retry-failed
+hoje goals checkpoint --goal-id <id> --status complete --evidence "<ev>" --quality-gate-json <json>
+hoje goals checkpoint --goal-id <id> --status failed --evidence "<ev>"
+hoje goals status
+hoje goals steer --kind add_subgoal --title "..." --objective "..." --evidence "..."
 ```
 
-`@goal` 구분자 없으면 전체 brief가 단일 목표 G001로 처리.
+## @goal 구분자
 
-## 유효한 @goal 구분자
-- `@goal: Title` (콜론 + 제목)
-- `@goal Title` (공백 + 제목)
-- `@goal` (단독)
+```
+공유 컨텍스트 (선택적 서문)
 
-## Step 1: Goals 생성
+@goal: 첫 번째 목표
+목표 설명...
 
-brief를 파싱하여 목표 목록을 생성하고 프로젝트에 `goals.md` 작성:
-
-```markdown
-# Goals
-
-## G001: [제목]
-**상태:** pending
-**목표:** [설명]
-**수용 기준:**
-- [ ] ...
-
-## G002: [제목]
-...
+@goal: 두 번째 목표
+목표 설명...
 ```
 
-`gate-plan`이나 `deep-ask`에서 넘어온 경우 해당 계획/스펙을 goals.md에 통합.
+- `@goal:` / `@goal` / `@goal Title` 모두 유효 (컬럼 0 시작, 선행 공백 없음)
+- 서문은 goal이 되지 않음 (전역 컨텍스트)
+- 구분자 없으면 전체가 단일 G001
 
-## Step 2: 각 Goal 실행 루프
+## 실행 루프
 
-각 goal에 대해 순서대로:
+1. `hoje goals create-goals`로 goals.json 생성
+2. `hoje goals complete-goals`로 다음 goal 확인
+3. `goal({"op":"get"})` → `goal({"op":"create","objective":"..."})`
+4. 현재 goal 구현
+5. **필수 정리/검토 게이트 실행** (아래)
+6. `hoje goals checkpoint --goal-id <id> --status complete --quality-gate-json <json>`
+7. 모든 goal 완료 시까지 반복
 
-### 2a. 구현
-- 현재 goal의 수용 기준을 기반으로 구현
-- goal과 관련 없는 파일 수정 금지
-- 관련 테스트 실행 확인
+## 블로커 분류
 
-### 2b. 품질 게이트 (필수, 순서대로)
+- **resolvable**: 에이전트가 처리 가능 (테스트 실패, 구현 누락 등) — 절대 일시중지 금지, executor 위임 또는 steer로 블로커 기록
+- **human_blocked**: 사용자만 처리 가능 (크리덴셜, 수동 단계, 외부 승인) — 마지막 수단으로만 pause
 
-**① Slop Cleaner**
-`run-goals-slop-cleaner` 스킬을 Skill 툴로 호출.
-- 결과: `PASS` → 다음 단계
-- 결과: `BLOCKED` → Agent(executor)를 스폰하여 차단 항목 수정 → Slop Cleaner 재실행 (PASS까지 반복)
+## 동적 조정 (Steer)
 
-**② Architect 리뷰**
-Agent로 Architect를 스폰하여 읽기 전용 검토:
-- 아키텍처 측면 (경계, 계층, 데이터 흐름)
-- 제품 측면 (수용 기준, 엣지 케이스, 회귀)
-- 코드 측면 (유지보수성, 테스트, 통합점)
-- 결과: `APPROVE` / `COMMENT` / `REQUEST CHANGES` / `BLOCK`
-
-**③ Executor QA**
-Agent로 QA executor를 스폰하여:
-- 수용 기준 대비 e2e 검증
-- 경계/실패 케이스 테스트 (adversarial cases)
-- 실제 실행 증거 제공 (스크린샷, CLI 출력, 테스트 결과)
-- 결과: `passed` / `failed`
-
-### 2c. 블로커 처리
-Architect 또는 QA에서 블로커 발견 시:
-1. 블로커 내용을 goals.md에 기록
-2. 블로커 해결 서브골을 현재 goal 앞에 삽입
-3. 해결 후 품질 게이트 전체 재실행
-
-### 2d. 체크포인트
-품질 게이트 전체 통과 시 goals.md 업데이트:
-
-```markdown
-## G001: [제목]
-**상태:** ✅ complete
-**완료 증거:** [테스트 통과, 스크린샷 등]
+```
+hoje goals steer --kind add_subgoal --title "블로커 조사" --objective "..." --evidence "..."
+hoje goals steer --kind split_subgoal --goal-id G002 --replacements-json '[...]'
+hoje goals steer --kind reorder_pending --order-json '["G003","G002"]'
+hoje goals steer --kind revise_pending_wording --goal-id G002 --title "새 제목"
 ```
 
-## Step 3: 다음 Goal
+변경 불가: aggregate 목표, 원본 제약, 품질 게이트, 완료된 goal 상태.
 
-goals.md에서 다음 `pending` goal로 이동. 모든 goal이 complete이면 최종 요약 생성.
+## 필수 구현 위임 (대규모 작업)
 
-## 동적 조정 (Steering)
+story가 다음 조건 중 하나라도 해당하면 **반드시 executor 에이전트에 위임**:
+- 3개 이상 파일 또는 2개 이상 독립 모듈
+- 약 200라인 이상 순 변경
+- 병렬 가능한 독립 슬라이스
+- 리더가 이미 2회 이상 인라인 수정
 
-실행 중 언제든지:
-- **goal 추가**: `@steer add: 새 목표 설명`
-- **goal 분할**: `@steer split G002: A부분, B부분`
-- **순서 변경**: `@steer reorder: G003, G001, G002`
-- **메모**: `@steer note: 메모 내용`
+위임 규칙: 클린 슬라이스로 분할, 각 executor에 명확한 수용 기준 제시, 독립 슬라이스는 병렬 실행.
 
-**변경 불가**: aggregate 목표, 원본 제약사항, 품질 게이트, 완료된 goal 상태
+## 완료 정리/검토 게이트 (필수)
 
-## 품질 게이트 통과 기준 (모두 충족해야 함)
+goal을 `complete` 체크포인트하기 전 반드시 실행:
 
-- Slop Cleaner: `PASS`
-- Architect: `APPROVE`
-- QA: 모든 항목 `passed`
-- 수용 기준: 모두 체크
+1. **ai-slop-cleaner** — 변경 파일만 검사, BLOCKING 0건까지 반복
+2. **검증 재실행** — cleaner 통과 후
+3. **Architect 리뷰** — 아키텍처/제품/코드 3개 레인
+4. **Executor QA/레드팀** — 실제 표면에서 E2E 증명 (스크린샷, CLI 재생, API 증거 등)
 
-## 계획 없이 실행 요청 시
+`--quality-gate-json` 구조:
+```json
+{
+  "architectReview": { "architectureStatus": "CLEAR", "productStatus": "CLEAR", "codeStatus": "CLEAR", "recommendation": "APPROVE", "blockers": [] },
+  "executorQa": { "status": "passed", "contractCoverage": [...], "surfaceEvidence": [...], "adversarialCases": [...], "blockers": [] },
+  "iteration": { "status": "passed", "fullRerun": true, "blockers": [] }
+}
+```
 
-plan 또는 consensus artifact 없이 큰 작업을 요청받으면:
-1. `gate-plan` 스킬을 Skill 툴로 호출하여 계획 수립 먼저
-2. 계획 승인 후 실행 재개
+모든 레인 CLEAR/passed, blockers 0건, evidence 전부 비어있지 않아야 통과. 하나라도 실패하면 블로커 기록 후 재시도.
+
+## 계획 없는 요청 처리
+
+plan이나 합의 산출물 없이 큰 작업 요청 시:
+1. `/hoje-plan`으로 먼저 계획 수립
+2. 승인 후 실행
 3. 묵시적 즉흥 실행 금지
-
-## Goals 파일 위치
-
-`./goals.md` (프로젝트 루트) 또는 사용자가 지정한 경로.
-파일이 이미 있으면 기존 내용에 통합.
