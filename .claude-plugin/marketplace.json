@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "hoje-code",
-      "version": "0.8.1",
+      "version": "0.9.3",
       "source": "./plugins/hoje-code",
       "description": "deep-ask: 모호한 요구사항을 질문으로 구체화\ngate-plan: Planner→Architect→Critic 합의로 계획 수립\nrun-goals: @goal 기반 순차 실행 + 품질 게이트"
     }
