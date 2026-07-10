@@ -7,6 +7,7 @@ log_metric의 분류기/insert/Supabase 설정 재사용. source='codex'.
 import glob
 import json
 import os
+import time
 from datetime import datetime, timezone
 
 if os.name == "nt" and __name__ == "__main__":
@@ -27,6 +28,39 @@ MAX_AGE_DAYS = 14
 HOOKS_PATH = os.path.join(os.path.expanduser("~"), ".codex", "hooks.json")
 PLUGIN_KEY = "model-stats@devez-marketplace"
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
+
+# 동시 스캐너 경합 방지: Stop마다 detached 스캐너가 떠서 같은 state를 읽고
+# 같은 turn을 중복 insert(TOCTOU)하는 것을 락 파일로 직렬화.
+LOCK_PATH = os.path.join(lm.CONFIG_DIR, "codex_scan.lock")
+LOCK_STALE_SEC = 600  # 10분 넘은 락 = 죽은 프로세스 잔재로 보고 회수
+
+
+def _acquire_lock():
+    os.makedirs(lm.CONFIG_DIR, exist_ok=True)
+    for _ in range(2):
+        try:
+            fd = os.open(LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            try:
+                if time.time() - os.path.getmtime(LOCK_PATH) > LOCK_STALE_SEC:
+                    os.remove(LOCK_PATH)
+                    continue  # 회수 후 재시도
+            except OSError:
+                pass
+            return False
+        except OSError:
+            return False
+    return False
+
+
+def _release_lock():
+    try:
+        os.remove(LOCK_PATH)
+    except OSError:
+        pass
 
 
 def _claude_plugin_disabled():
@@ -169,6 +203,16 @@ def parse_turns(path):
 
 
 def run():
+    if not _acquire_lock():
+        lm.log("codex scan skipped: another scanner active")
+        return
+    try:
+        _run_locked()
+    finally:
+        _release_lock()
+
+
+def _run_locked():
     # 플러그인이 Claude에서 비활성화됐으면 codex 훅 자기제거 후 종료(고아 훅 정리)
     if _claude_plugin_disabled():
         if _remove_self_from_codex():

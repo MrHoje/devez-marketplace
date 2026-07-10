@@ -389,7 +389,10 @@ def insert(env, row):
         with urllib.request.urlopen(req, timeout=30) as r:
             log(f"insert ok {r.status} cat={row.get('category')} dif={row.get('difficulty')} model={row.get('model')}")
     except urllib.error.HTTPError as ex:
-        log(f"insert HTTPError {ex.code}: {ex.read().decode()[:300]}")
+        if ex.code == 409:  # unique 충돌 = 이미 기록된 turn(중복 방어선 작동)
+            log(f"insert dup skipped: {row.get('session_id')} turn={ (row.get('raw') or {}).get('turn') }")
+        else:
+            log(f"insert HTTPError {ex.code}: {ex.read().decode()[:300]}")
     except Exception as ex:
         log(f"insert error: {ex}")
 

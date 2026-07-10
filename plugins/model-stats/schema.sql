@@ -32,6 +32,10 @@ alter table public.model_metrics add column if not exists code_files       int;
 alter table public.model_metrics add column if not exists code_lines       int;
 alter table public.model_metrics add column if not exists reasoning_tokens int;
 
+-- codex 중복 적재 방지(동시 스캐너 경합 대비 최종 방어선)
+create unique index if not exists idx_mm_codex_turn
+  on public.model_metrics (session_id, ((raw->>'turn'))) where source = 'codex';
+
 create index if not exists idx_mm_model    on public.model_metrics (model);
 create index if not exists idx_mm_category on public.model_metrics (category);
 create index if not exists idx_mm_created  on public.model_metrics (created_at);
