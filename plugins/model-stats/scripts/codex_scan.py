@@ -130,6 +130,17 @@ def save_state(s):
         lm.log(f"codex state save fail: {e}")
 
 
+def _delta_usage(cur_total, prev_total):
+    """total_token_usage(세션 누적)의 turn 간 델타 = 이 turn의 실제 총 사용량.
+    last_token_usage(마지막 API 호출)만 쓰면 tool 루프 turn의 출력이 누락되므로
+    claude(turn 전체 누적)와 기준을 맞추기 위해 누적 델타로 계산."""
+    d = {}
+    for k in ("input_tokens", "output_tokens", "reasoning_output_tokens",
+              "cached_input_tokens", "total_tokens"):
+        d[k] = max(0, (cur_total.get(k, 0) or 0) - (prev_total.get(k, 0) or 0))
+    return d
+
+
 def _dur_ms(start, end):
     try:
         t0 = datetime.fromisoformat(start.replace("Z", "+00:00"))
@@ -146,6 +157,7 @@ def parse_turns(path):
     cwd = None
     turns = []
     cur = None
+    prev_total = {}  # 직전 turn까지의 total_token_usage 누적(델타 계산 기준점)
     for line in open(path, encoding="utf-8"):
         line = line.strip()
         if not line:
@@ -189,13 +201,18 @@ def parse_turns(path):
                 if isinstance(m, str):
                     cur["response"] += m
             elif pt == "token_count":
-                lu = (p.get("info") or {}).get("last_token_usage") or {}
-                if lu:
-                    cur["input_tokens"] = lu.get("input_tokens", cur["input_tokens"]) or 0
-                    cur["output_tokens"] = lu.get("output_tokens", cur["output_tokens"]) or 0
-                    cur["reasoning_tokens"] = lu.get("reasoning_output_tokens", cur["reasoning_tokens"]) or 0
-                    cur["cache_read"] = lu.get("cached_input_tokens", cur["cache_read"]) or 0
-                    cur["usage"] = lu
+                info = p.get("info") or {}
+                tot = info.get("total_token_usage")
+                if tot:
+                    cur["_last_total"] = tot  # turn 종료 시 델타로 환산
+                else:
+                    lu = info.get("last_token_usage") or {}  # 구버전 fallback
+                    if lu:
+                        cur["input_tokens"] = lu.get("input_tokens", cur["input_tokens"]) or 0
+                        cur["output_tokens"] = lu.get("output_tokens", cur["output_tokens"]) or 0
+                        cur["reasoning_tokens"] = lu.get("reasoning_output_tokens", cur["reasoning_tokens"]) or 0
+                        cur["cache_read"] = lu.get("cached_input_tokens", cur["cache_read"]) or 0
+                        cur["usage"] = lu
                 cur["model"] = model
             elif t == "response_item" and pt and "call" in pt:
                 cur["tool_calls"] += 1
@@ -207,6 +224,15 @@ def parse_turns(path):
             elif pt == "task_complete":
                 cur["end"] = ts
                 cur["duration_ms"] = _dur_ms(cur["start"], ts)
+                lt = cur.pop("_last_total", None)
+                if lt:  # total 누적 → turn 델타로 환산(claude와 동일 기준)
+                    d = _delta_usage(lt, prev_total)
+                    cur["input_tokens"] = d["input_tokens"]
+                    cur["output_tokens"] = d["output_tokens"]
+                    cur["reasoning_tokens"] = d["reasoning_output_tokens"]
+                    cur["cache_read"] = d["cached_input_tokens"]
+                    cur["usage"] = d
+                    prev_total = lt
                 cur["cost_usd"] = round(lm.cost_codex(cur.get("usage") or {}, cur.get("model")), 6)
                 turns.append(cur)
                 cur = None
