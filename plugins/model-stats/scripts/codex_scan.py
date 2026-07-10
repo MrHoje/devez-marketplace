@@ -195,6 +195,7 @@ def run():
             cwd = tn.get("cwd") or ""
             row = {
                 "source": "codex",
+                "created_at": tn.get("end") or tn.get("start"),  # 턴 실제 시각(배치 insert라도 실제시각 유지)
                 "session_id": sid,
                 "project": os.path.basename(cwd.rstrip("/\\")) if cwd else None,
                 "model": tn.get("model"),
