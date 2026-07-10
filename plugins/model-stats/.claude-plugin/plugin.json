@@ -1,6 +1,6 @@
 {
   "name": "model-stats",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Claude Code + Codex 프롬프트 계측. 매 턴을 카테고리/난이도/도메인/성패로 분류(CF Worker=DeepSeek 대행, 실패 시 로컬 규칙 폴백)하고 비용·코드산출까지 Supabase에 집계. 모델별 성공률·비용 비교 대시보드 제공.",
   "author": {
     "name": "MrHoje"

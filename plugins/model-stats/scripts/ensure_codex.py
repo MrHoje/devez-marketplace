@@ -8,6 +8,15 @@ import json
 import os
 import sys
 
+if os.name == "nt" and __name__ == "__main__":
+    try:
+        import ctypes
+        _w = ctypes.windll.kernel32.GetConsoleWindow()
+        if _w:
+            ctypes.windll.user32.ShowWindow(_w, 0)  # SW_HIDE
+    except Exception:
+        pass
+
 CODEX_DIR = os.path.join(os.path.expanduser("~"), ".codex")
 HOOKS_PATH = os.path.join(CODEX_DIR, "hooks.json")
 SCAN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_scan.py")

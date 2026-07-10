@@ -13,6 +13,16 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 
+# Windows: hook 실행 시 뜨는 콘솔 창 즉시 숨김(스크립트로 직접 실행될 때만).
+if os.name == "nt" and __name__ == "__main__":
+    try:
+        import ctypes
+        _w = ctypes.windll.kernel32.GetConsoleWindow()
+        if _w:
+            ctypes.windll.user32.ShowWindow(_w, 0)  # SW_HIDE
+    except Exception:
+        pass
+
 CONFIG_DIR = os.environ.get("MODEL_STATS_HOME") or os.path.join(os.path.expanduser("~"), ".model-stats")
 ENV_PATH = os.path.join(CONFIG_DIR, ".env")
 LOG_PATH = os.path.join(CONFIG_DIR, "metric.log")

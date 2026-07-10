@@ -9,6 +9,15 @@ import json
 import os
 from datetime import datetime, timezone
 
+if os.name == "nt" and __name__ == "__main__":
+    try:
+        import ctypes
+        _w = ctypes.windll.kernel32.GetConsoleWindow()
+        if _w:
+            ctypes.windll.user32.ShowWindow(_w, 0)  # SW_HIDE
+    except Exception:
+        pass
+
 import log_metric as lm  # 같은 폴더 (scripts/)
 
 SESS_DIR = os.path.join(os.path.expanduser("~"), ".codex", "sessions")
