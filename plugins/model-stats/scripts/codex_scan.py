@@ -63,9 +63,13 @@ def _remove_self_from_codex():
         with open(HOOKS_PATH, encoding="utf-8") as f:
             d = json.load(f)
         stop = (d.get("hooks") or {}).get("Stop") or []
-        kept = [g for g in stop if not any(
-            "codex_scan.py" in str(h.get("command", ""))
-            for h in (g.get("hooks", []) if isinstance(g, dict) else []))]
+        def _ours(g):
+            for h in (g.get("hooks", []) if isinstance(g, dict) else []):
+                c = str(h.get("command", ""))
+                if "codex_scan.py" in c or "codex_hook.py" in c:
+                    return True
+            return False
+        kept = [g for g in stop if not _ours(g)]
         if len(kept) != len(stop):
             d["hooks"]["Stop"] = kept
             with open(HOOKS_PATH, "w", encoding="utf-8") as f:

@@ -21,26 +21,49 @@ CODEX_DIR = os.path.join(os.path.expanduser("~"), ".codex")
 HOOKS_PATH = os.path.join(CODEX_DIR, "hooks.json")
 SCAN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_scan.py")
 
+# 고정 런처: 버전 안 박힌 안정 경로 → codex 훅 명령이 업데이트마다 안 바뀜 → Codex 재신뢰 불필요.
+CONFIG_DIR = os.environ.get("MODEL_STATS_HOME") or os.path.join(os.path.expanduser("~"), ".model-stats")
+LAUNCHER = os.path.join(CONFIG_DIR, "codex_hook.py")
 
-def _py_exe():
-    """Windows면 콘솔 안 뜨는 pythonw 절대경로, 아니면 python.
-    실행 중 인터프리터 옆 pythonw 우선(가장 안정) → PATH의 pythonw 폴백."""
-    if os.name == "nt":
-        sib = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-        if os.path.exists(sib):
-            return sib
-        import shutil
-        cand = shutil.which("pythonw")
-        if cand and os.path.exists(cand):
-            return cand
-    return "python"
+
+def _write_launcher():
+    """현재 버전 codex_scan.py를 실행하는 런처를 고정 경로에 기록(내용만 버전따라 갱신)."""
+    os.makedirs(CONFIG_DIR, exist_ok=True)
+    content = (
+        "import os, sys, runpy\n"
+        "_t = " + json.dumps(SCAN) + "\n"
+        "if os.path.exists(_t):\n"
+        "    sys.path.insert(0, os.path.dirname(_t))  # codex_scan의 log_metric import 가능하게\n"
+        "    runpy.run_path(_t, run_name='__main__')\n"
+    )
+    cur = None
+    try:
+        with open(LAUNCHER, encoding="utf-8") as f:
+            cur = f.read()
+    except Exception:
+        pass
+    if cur != content:
+        with open(LAUNCHER, "w", encoding="utf-8") as f:
+            f.write(content)
+
+
+def _is_ours(group):
+    for h in group.get("hooks", []) if isinstance(group, dict) else []:
+        c = str(h.get("command", ""))
+        if "codex_hook.py" in c or "codex_scan.py" in c:  # 신규 런처 + 구버전 직접경로
+            return True
+    return False
 
 
 def main():
     if not os.path.isdir(CODEX_DIR):
         return  # Codex 미설치
-    py = _py_exe().replace(os.sep, "/")
-    cmd = f'"{py}" -X utf8 "{SCAN.replace(os.sep, "/")}"'
+    try:
+        _write_launcher()
+    except Exception:
+        return
+    py = "pythonw" if os.name == "nt" else "python"  # 콘솔 없음(win) / 이식성
+    cmd = f'{py} -X utf8 "{LAUNCHER.replace(os.sep, "/")}"'  # 고정 명령(불변)
 
     data = {"hooks": {}}
     if os.path.exists(HOOKS_PATH):
@@ -56,23 +79,14 @@ def main():
     if not isinstance(stop, list):
         return
 
-    # 기존 codex_scan 항목 제거 후 현재 경로로 재삽입(버전 업데이트 시 경로 갱신 위해).
-    def has_scan(group):
-        for h in group.get("hooks", []) if isinstance(group, dict) else []:
-            if "codex_scan.py" in str(h.get("command", "")):
-                return True
-        return False
-
-    kept = [g for g in stop if not has_scan(g)]
-    new_stop = kept + [{"hooks": [{"type": "command", "command": cmd}]}]
-
-    # 이미 동일하면(정확히 현재 cmd 1개) 파일 안 건드림
-    already = [g for g in stop if has_scan(g)]
+    kept = [g for g in stop if not _is_ours(g)]
+    already = [g for g in stop if _is_ours(g)]
+    # 이미 정확히 현재 cmd 1개면 파일 안 건드림(불필요한 재신뢰 방지)
     if (len(already) == 1 and len(kept) == len(stop) - 1
             and already[0].get("hooks", [{}])[0].get("command") == cmd):
         return
 
-    hooks["Stop"] = new_stop
+    hooks["Stop"] = kept + [{"hooks": [{"type": "command", "command": cmd}]}]
     try:
         with open(HOOKS_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
