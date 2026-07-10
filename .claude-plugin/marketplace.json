@@ -10,6 +10,12 @@
       "version": "0.9.3",
       "source": "./plugins/hoje-code",
       "description": "deep-ask: 모호한 요구사항을 질문으로 구체화\ngate-plan: Planner→Architect→Critic 합의로 계획 수립\nrun-goals: @goal 기반 순차 실행 + 품질 게이트"
+    },
+    {
+      "name": "model-stats",
+      "version": "0.1.0",
+      "source": "./plugins/model-stats",
+      "description": "Claude Code + Codex 프롬프트 계측. 매 턴을 종류/난이도로 로컬 규칙 분류(무API)해 Supabase 집계. Stop hook + /model-stats 커맨드."
     }
   ]
 }
