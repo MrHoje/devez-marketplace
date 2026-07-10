@@ -15,6 +15,57 @@ SESS_DIR = os.path.join(os.path.expanduser("~"), ".codex", "sessions")
 STATE_PATH = os.path.join(lm.CONFIG_DIR, "codex_state.json")
 MAX_AGE_DAYS = 14
 
+HOOKS_PATH = os.path.join(os.path.expanduser("~"), ".codex", "hooks.json")
+PLUGIN_KEY = "model-stats@devez-marketplace"
+CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
+
+
+def _claude_plugin_disabled():
+    """Claude에서 이 플러그인이 '설치됐지만 비활성'이면 True. 확신 못하면 False(=유지, fail-safe).
+    settings의 enabledPlugins + installed_plugins.json 조합으로 판정."""
+    read_any = False
+    enabled = False
+    for name in ("settings.json", "settings.local.json"):
+        p = os.path.join(CLAUDE_DIR, name)
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+            read_any = True
+            if (d.get("enabledPlugins") or {}).get(PLUGIN_KEY) is True:
+                enabled = True
+        except FileNotFoundError:
+            continue
+        except Exception:
+            return False  # 파싱 실패 → 판단 불가 → 유지
+    if not read_any or enabled:
+        return False  # 설정 못 읽음 or 활성 → 유지
+    # 활성 아님 확인됨. 설치목록에 있으면(=설치됨+비활성) 확정.
+    try:
+        with open(os.path.join(CLAUDE_DIR, "plugins", "installed_plugins.json"), encoding="utf-8") as f:
+            inst = json.load(f)
+        return PLUGIN_KEY in (inst.get("plugins") or {})
+    except Exception:
+        return False  # 설치목록 못 읽음 → 확신 불가 → 유지
+
+
+def _remove_self_from_codex():
+    """~/.codex/hooks.json Stop에서 codex_scan.py 참조 항목 제거."""
+    try:
+        with open(HOOKS_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        stop = (d.get("hooks") or {}).get("Stop") or []
+        kept = [g for g in stop if not any(
+            "codex_scan.py" in str(h.get("command", ""))
+            for h in (g.get("hooks", []) if isinstance(g, dict) else []))]
+        if len(kept) != len(stop):
+            d["hooks"]["Stop"] = kept
+            with open(HOOKS_PATH, "w", encoding="utf-8") as f:
+                json.dump(d, f, indent=2, ensure_ascii=False)
+            return True
+    except Exception as e:
+        lm.log(f"codex self-remove fail: {e}")
+    return False
+
 
 def load_state():
     try:
@@ -105,6 +156,11 @@ def parse_turns(path):
 
 
 def run():
+    # 플러그인이 Claude에서 비활성화됐으면 codex 훅 자기제거 후 종료(고아 훅 정리)
+    if _claude_plugin_disabled():
+        if _remove_self_from_codex():
+            lm.log("plugin disabled in Claude → removed own codex Stop hook")
+        return
     env = lm.load_env()
     if not env.get("SUPABASE_URL"):
         lm.log("codex scan: no supabase config"); return
