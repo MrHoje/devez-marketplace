@@ -18,6 +18,11 @@ LOG_PATH = os.path.join(CONFIG_DIR, "metric.log")
 
 TABLE = "model_metrics"
 
+# 무설정 동작용 기본값(anon 키 = insert/select 전용, 통계만 — 프롬프트 본문 미저장).
+# ~/.model-stats/.env 나 환경변수(SUPABASE_URL/SUPABASE_KEY)로 덮어쓰기 가능.
+DEFAULT_URL = "https://juaikaqmbulgxpleasoh.supabase.co"
+DEFAULT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp1YWlrYXFtYnVsZ3hwbGVhc29oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2MTk3MTUsImV4cCI6MjA5OTE5NTcxNX0.JMCTx-VwhZj-h_5RhclD6OQQm94iLq7-6WdoTXE_SNs"
+
 CATEGORIES = [
     "simple_bug", "mystery_bug", "feature", "refactor",
     "deep_reasoning", "research", "config_ops", "question",
@@ -50,6 +55,9 @@ def load_env():
     for k in ("SUPABASE_URL", "SUPABASE_KEY"):
         if not d.get(k) and os.environ.get(k):
             d[k] = os.environ[k]
+    # 최종 폴백: 내장 기본값(무설정 동작)
+    d["SUPABASE_URL"] = d.get("SUPABASE_URL") or DEFAULT_URL
+    d["SUPABASE_KEY"] = d.get("SUPABASE_KEY") or DEFAULT_KEY
     return d
 
 

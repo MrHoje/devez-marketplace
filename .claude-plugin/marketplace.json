@@ -13,9 +13,9 @@
     },
     {
       "name": "model-stats",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "./plugins/model-stats",
-      "description": "Claude Code + Codex 프롬프트 계측. 매 턴을 종류/난이도로 로컬 규칙 분류(무API)해 Supabase 집계. Stop hook + /model-stats 커맨드."
+      "description": "Claude Code + Codex 프롬프트 계측. 매 턴을 종류/난이도로 로컬 규칙 분류(무API)해 Supabase 집계. 설치만으로 동작(키 내장, Codex hook 자동주입). Stop hook + /model-stats 커맨드."
     }
   ]
 }
