@@ -148,6 +148,7 @@ def blocks_text(content):
 
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Update"}
+INTERRUPT_MARK = "[Request interrupted by user]"  # 사용자가 응답 중단 시 다음 user 항목에 삽입
 
 
 def _code_metric(name, inp):
@@ -171,9 +172,11 @@ def is_human_user(entry):
         return False
     c = entry.get("message", {}).get("content")
     if isinstance(c, str):
-        return c.strip() != ""
+        s = c.strip()
+        return s != "" and INTERRUPT_MARK not in s  # interrupt 마커는 실제 프롬프트 아님
     if isinstance(c, list):
-        return any(isinstance(b, dict) and b.get("type") == "text" for b in c)
+        txts = [b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text"]
+        return any(t.strip() and INTERRUPT_MARK not in t for t in txts)
     return False
 
 
@@ -218,8 +221,22 @@ def parse_transcript(path):
     cost_usd = 0.0
     edited_files = set()
     code_lines = 0
+    interrupted = False   # 사용자가 이 턴 응답을 중단했는가(불만족/오작동 신호)
+    thinking_blocks = 0   # thinking 블록 수(내용은 transcript에 redacted라 길이/토큰 측정 불가)
+    edit_events = 0       # 편집 tool_use 총 횟수(재편집 계산용)
+    cache_read = 0        # 캐시 히트 토큰 총합
+    cache_write = 0       # 캐시 생성 토큰 총합
 
     for e in entries[ui + 1:]:
+        if e.get("type") == "user":
+            # 응답 중간에 낀 interrupt 마커 감지(다음 실제 프롬프트 전까지)
+            cc = e.get("message", {}).get("content")
+            s = cc if isinstance(cc, str) else (
+                " ".join(b.get("text", "") for b in cc if isinstance(b, dict) and b.get("type") == "text")
+                if isinstance(cc, list) else "")
+            if INTERRUPT_MARK in s:
+                interrupted = True
+            continue
         if e.get("type") != "assistant":
             continue
         msg = e.get("message", {})
@@ -233,6 +250,8 @@ def parse_transcript(path):
             if ctx:
                 input_tokens = ctx
             output_tokens += usage.get("output_tokens", 0) or 0
+            cache_read += usage.get("cache_read_input_tokens", 0) or 0
+            cache_write += usage.get("cache_creation_input_tokens", 0) or 0
             cost_usd += cost_claude(usage, model)
         content = msg.get("content", [])
         if isinstance(content, list):
@@ -240,12 +259,17 @@ def parse_transcript(path):
                 if isinstance(b, dict):
                     if b.get("type") == "tool_use":
                         tool_calls += 1
-                        f, ln = _code_metric(b.get("name"), b.get("input") or {})
+                        name = b.get("name")
+                        if name in EDIT_TOOLS:
+                            edit_events += 1
+                        f, ln = _code_metric(name, b.get("input") or {})
                         if f:
                             edited_files.add(f)
                         code_lines += ln
                     elif b.get("type") == "text":
                         resp_text_parts.append(b.get("text", ""))
+                    elif b.get("type") == "thinking":
+                        thinking_blocks += 1
         if e.get("timestamp"):
             last_ts = e["timestamp"]
 
@@ -273,6 +297,12 @@ def parse_transcript(path):
         "code_lines": code_lines,
         "_edited": edited_files,  # 서브와 합집합 계산용(직렬화 전 제거)
         "reasoning_tokens": 0,
+        "interrupted": interrupted,
+        "thinking_blocks": thinking_blocks,
+        "edit_events": edit_events,
+        "re_edits": max(0, edit_events - len(edited_files)),  # 같은 파일 반복 편집 = 시행착오 신호
+        "cache_read": cache_read,
+        "cache_write": cache_write,
     }
 
 
@@ -551,7 +581,15 @@ def run_worker(tmp):
         "code_lines": data.get("code_lines"),
         "reasoning_tokens": data.get("reasoning_tokens"),
         "raw": {"reason": cls.get("reason"), "usage": data["usage_raw"], "user_ts": data.get("user_ts"),
-                "subagents": sub["breakdown"], "subagent_input_tokens": sub["input_tokens"]},
+                "subagents": sub["breakdown"], "subagent_input_tokens": sub["input_tokens"],
+                "quality": {
+                    "interrupted": data.get("interrupted"),
+                    "re_edits": data.get("re_edits"),
+                    "edit_events": data.get("edit_events"),
+                    "thinking_blocks": data.get("thinking_blocks"),
+                    "cache_read": data.get("cache_read"),
+                    "cache_write": data.get("cache_write"),
+                }},
     }
     insert(env, row)
     if sid and data.get("user_ts"):
