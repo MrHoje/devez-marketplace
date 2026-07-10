@@ -4,6 +4,7 @@
 의존성 없음(stdlib urllib/json). 비동기: hook은 worker를 detach 후 즉시 종료(블로킹 X).
 런타임 설정/로그/상태는 repo 밖 ~/.model-stats/ 에 둠 (실키가 플러그인 repo에 안 실림).
 """
+import glob
 import json
 import os
 import subprocess
@@ -205,6 +206,7 @@ def parse_transcript(path):
     user_e = entries[ui]
     prompt = blocks_text(user_e.get("message", {}).get("content"))
     user_ts = user_e.get("timestamp")
+    prompt_id = user_e.get("promptId")  # 서브에이전트 턴 귀속 키
 
     model = None
     input_tokens = 0
@@ -259,6 +261,7 @@ def parse_transcript(path):
         "prompt": prompt,
         "response": "\n".join(resp_text_parts),
         "user_ts": user_ts,  # 턴 멱등키(같은 프롬프트 턴 재기록 방지)
+        "prompt_id": prompt_id,  # 서브에이전트 파일 promptId 매칭용
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -268,8 +271,87 @@ def parse_transcript(path):
         "cost_usd": round(cost_usd, 6),
         "code_files": len(edited_files),
         "code_lines": code_lines,
+        "_edited": edited_files,  # 서브와 합집합 계산용(직렬화 전 제거)
         "reasoning_tokens": 0,
     }
+
+
+def parse_subagents(transcript_path, prompt_id):
+    """이 턴(prompt_id)에 속한 서브에이전트 transcript를 모델별로 정확히 합산.
+    최신 구조: <project>/<session>.jsonl + <project>/<session>/subagents/agent-*.jsonl
+    서브 파일의 promptId == 메인 사람턴 promptId 인 파일만 귀속(정확 매칭)."""
+    agg = {"output_tokens": 0, "tool_calls": 0, "cost_usd": 0.0,
+           "code_lines": 0, "input_tokens": 0, "count": 0,
+           "_edited": set(), "breakdown": []}
+    if not prompt_id or not transcript_path:
+        return agg
+    subdir = os.path.join(os.path.splitext(transcript_path)[0], "subagents")
+    if not os.path.isdir(subdir):
+        return agg
+    for p in sorted(glob.glob(os.path.join(subdir, "*.jsonl"))):
+        pid = None
+        model = None
+        out = 0
+        tc = 0
+        cost = 0.0
+        lines = 0
+        inp = 0
+        files = set()
+        try:
+            with open(p, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except Exception:
+                        continue
+                    if not isinstance(e, dict):
+                        continue
+                    if pid is None:
+                        pid = e.get("promptId")
+                    if e.get("type") != "assistant":
+                        continue
+                    msg = e.get("message", {})
+                    model = msg.get("model", model)
+                    usage = msg.get("usage", {}) or {}
+                    if usage:
+                        out += usage.get("output_tokens", 0) or 0
+                        cost += cost_claude(usage, model)
+                        ctx = (usage.get("input_tokens", 0)
+                               + usage.get("cache_read_input_tokens", 0)
+                               + usage.get("cache_creation_input_tokens", 0))
+                        if ctx:
+                            inp = ctx  # 서브 컨텍스트 최종 크기
+                    content = msg.get("content", [])
+                    if isinstance(content, list):
+                        for b in content:
+                            if isinstance(b, dict) and b.get("type") == "tool_use":
+                                tc += 1
+                                ff, ln = _code_metric(b.get("name"), b.get("input") or {})
+                                if ff:
+                                    files.add(ff)
+                                lines += ln
+        except Exception as ex:
+            log(f"subagent read fail {os.path.basename(p)}: {ex}")
+            continue
+        if pid != prompt_id:  # 다른 턴에서 생성된 서브에이전트 → 제외
+            continue
+        agg["output_tokens"] += out
+        agg["tool_calls"] += tc
+        agg["cost_usd"] += cost
+        agg["code_lines"] += lines
+        agg["input_tokens"] += inp
+        agg["_edited"] |= files
+        agg["count"] += 1
+        agg["breakdown"].append({
+            "agentId": os.path.basename(p)[len("agent-"):-len(".jsonl")]
+                       if os.path.basename(p).startswith("agent-") else os.path.basename(p),
+            "model": model, "output_tokens": out, "tool_calls": tc,
+            "cost_usd": round(cost, 6),
+        })
+    return agg
 
 
 # ---------- 분류: CF Worker(DeepSeek 대행) 우선, 실패 시 로컬 규칙 ----------
@@ -436,6 +518,18 @@ def run_worker(tmp):
         log(f"skip already-logged turn: {sid} {data['user_ts']}")
         return
 
+    # 서브에이전트(사이드체인) 정확 합산: 같은 promptId 파일만 귀속, 모델별 비용.
+    # classify 전에 합산 → 난이도(작업량 기반)에도 서브 작업량이 반영됨.
+    sub = parse_subagents(tpath, data.get("prompt_id"))
+    if sub["count"]:
+        data["output_tokens"] += sub["output_tokens"]
+        data["tool_calls"] += sub["tool_calls"]
+        data["cost_usd"] = round(data["cost_usd"] + sub["cost_usd"], 6)
+        data["code_lines"] += sub["code_lines"]
+        data["code_files"] = len(data.get("_edited", set()) | sub["_edited"])
+        log(f"subagents merged: n={sub['count']} +out={sub['output_tokens']} "
+            f"+tc={sub['tool_calls']} +cost={round(sub['cost_usd'], 6)}")
+
     cls = classify(data["prompt"], data["response"], data, env)
     cwd = hook.get("cwd", "")
     row = {
@@ -456,7 +550,8 @@ def run_worker(tmp):
         "code_files": data.get("code_files"),
         "code_lines": data.get("code_lines"),
         "reasoning_tokens": data.get("reasoning_tokens"),
-        "raw": {"reason": cls.get("reason"), "usage": data["usage_raw"], "user_ts": data.get("user_ts")},
+        "raw": {"reason": cls.get("reason"), "usage": data["usage_raw"], "user_ts": data.get("user_ts"),
+                "subagents": sub["breakdown"], "subagent_input_tokens": sub["input_tokens"]},
     }
     insert(env, row)
     if sid and data.get("user_ts"):
