@@ -47,5 +47,10 @@ create policy mm_insert_anon on public.model_metrics for insert to anon with che
 drop policy if exists mm_select_anon on public.model_metrics;
 create policy mm_select_anon on public.model_metrics for select to anon using (true);
 
+-- 대시보드 '전체삭제' 버튼용: anon delete 허용
+-- ⚠️ 키 아는 사람 누구나 전체삭제 가능. 원치 않으면 이 블록 제거(삭제는 콘솔/PAT로만).
+drop policy if exists mm_delete_anon on public.model_metrics;
+create policy mm_delete_anon on public.model_metrics for delete to anon using (true);
+
 -- PostgREST 스키마 캐시 갱신
 notify pgrst, 'reload schema';
