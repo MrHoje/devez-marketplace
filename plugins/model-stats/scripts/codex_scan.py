@@ -237,13 +237,13 @@ def run():
 def _spawn_detached():
     """스캔은 느림(턴별 분류 호출). Stop hook 타임아웃 방지 위해 백그라운드로 분리 후 즉시 반환."""
     import subprocess
-    import sys
     kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     if os.name == "nt":
-        kwargs["creationflags"] = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED | NEW_GROUP | NO_WINDOW
+        # NO_WINDOW만(DETACHED 조합 금지 — NO_WINDOW 무시돼 손자 콘솔이 새 창 띄움)
+        kwargs["creationflags"] = 0x08000000 | 0x00000200  # NO_WINDOW | NEW_GROUP
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--run"], **kwargs)
+    subprocess.Popen([lm.real_pyw(), "-X", "utf8", os.path.abspath(__file__), "--run"], **kwargs)
 
 
 if __name__ == "__main__":

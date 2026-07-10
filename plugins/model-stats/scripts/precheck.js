@@ -5,7 +5,7 @@ const { spawnSync } = require("child_process");
 const bin = process.platform === "win32" ? "pythonw" : "python";
 let ok = false;
 try {
-  const r = spawnSync(bin, ["--version"], { timeout: 5000 });
+  const r = spawnSync(bin, ["--version"], { timeout: 5000, windowsHide: true });
   ok = !r.error;
 } catch (e) {
   ok = false;

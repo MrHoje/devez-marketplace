@@ -444,6 +444,24 @@ def run_worker(tmp):
     insert(env, row)
 
 
+def real_pyw():
+    """워커용 인터프리터. venv 셔틀(pythonw 간판, 실제 python.exe 콘솔) 우회해
+    실제 바이너리 옆의 진짜 pythonw.exe를 직접 사용 — 콘솔창 생성 원천 차단."""
+    exe = sys.executable
+    try:
+        if os.name == "nt":
+            import ctypes
+            b = ctypes.create_unicode_buffer(512)
+            ctypes.windll.kernel32.GetModuleFileNameW(None, b, 512)
+            real = b.value or exe
+            cand = os.path.join(os.path.dirname(real), "pythonw.exe")
+            if os.path.exists(cand):
+                return cand
+    except Exception:
+        pass
+    return exe
+
+
 def spawn_worker(hook):
     fd, tmp = tempfile.mkstemp(suffix=".json", prefix="metric_")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -454,11 +472,13 @@ def spawn_worker(hook):
         "stderr": subprocess.DEVNULL,
     }
     if os.name == "nt":
-        kwargs["creationflags"] = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED | NEW_GROUP | NO_WINDOW
+        # NO_WINDOW만 사용(DETACHED와 조합하면 NO_WINDOW가 무시돼 손자 콘솔앱이 새 창 띄움).
+        # NO_WINDOW의 숨김 콘솔을 자식 체인이 상속 → 어떤 단계도 창 안 뜸.
+        kwargs["creationflags"] = 0x08000000 | 0x00000200  # NO_WINDOW | NEW_GROUP
     else:
         kwargs["start_new_session"] = True
     subprocess.Popen(
-        [sys.executable, os.path.abspath(__file__), "--worker", tmp], **kwargs
+        [real_pyw(), "-X", "utf8", os.path.abspath(__file__), "--worker", tmp], **kwargs
     )
 
 

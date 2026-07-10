@@ -13,7 +13,7 @@
     },
     {
       "name": "model-stats",
-      "version": "0.3.12",
+      "version": "0.3.13",
       "source": "./plugins/model-stats",
       "description": "⚠️ claude, codex 실 사용 비교를 위한 플러그인으로 지정된 사용자 외 설치하지 마세요(기록이 소유자 Supabase로 감).\nClaude Code + Codex 프롬프트 계측. 매 턴을 카테고리/난이도/도메인/성패로 분류(CF Worker=DeepSeek 대행, 실패 시 로컬 규칙)하고 비용·코드산출까지 Supabase 집계. 설치만으로 동작(키 내장, Codex hook 자동주입). Stop hook + /model-stats 커맨드 + 비교 대시보드."
     }
