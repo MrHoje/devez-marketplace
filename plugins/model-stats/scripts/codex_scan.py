@@ -164,5 +164,25 @@ def run():
     lm.log(f"codex scan done: {new} new turns ({len(files)} files seen)")
 
 
+def _spawn_detached():
+    """스캔은 느림(턴별 분류 호출). Stop hook 타임아웃 방지 위해 백그라운드로 분리 후 즉시 반환."""
+    import subprocess
+    import sys
+    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED | NEW_GROUP | NO_WINDOW
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--run"], **kwargs)
+
+
 if __name__ == "__main__":
-    run()
+    import sys
+    if "--run" in sys.argv:
+        run()
+    else:
+        try:
+            _spawn_detached()
+        except Exception as e:
+            lm.log(f"codex spawn fail: {e}")
+    raise SystemExit(0)
