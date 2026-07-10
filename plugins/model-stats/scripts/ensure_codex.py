@@ -22,10 +22,23 @@ HOOKS_PATH = os.path.join(CODEX_DIR, "hooks.json")
 SCAN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_scan.py")
 
 
+def _py_exe():
+    """Windows면 콘솔 안 뜨는 pythonw 절대경로, 아니면 python."""
+    if os.name == "nt":
+        import shutil
+        cand = shutil.which("pythonw")
+        if not cand:
+            cand = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if cand and os.path.exists(cand):
+            return cand
+    return "python"
+
+
 def main():
     if not os.path.isdir(CODEX_DIR):
         return  # Codex 미설치
-    cmd = f'python -X utf8 "{SCAN.replace(os.sep, "/")}"'
+    py = _py_exe().replace(os.sep, "/")
+    cmd = f'"{py}" -X utf8 "{SCAN.replace(os.sep, "/")}"'
 
     data = {"hooks": {}}
     if os.path.exists(HOOKS_PATH):
