@@ -170,11 +170,20 @@ def parse_turns(path):
                    "prompt": "", "response": "", "input_tokens": 0,
                    "output_tokens": 0, "tool_calls": 0, "usage": {},
                    "code_files": 0, "code_lines": 0, "reasoning_tokens": 0,
-                   "cost_usd": 0.0}
+                   "cost_usd": 0.0, "interrupted": False,
+                   "edit_events": 0, "cache_read": 0}
         elif cur is not None:
             if pt == "user_message":
                 msg = p.get("message") or p.get("text") or ""
-                cur["prompt"] = msg if isinstance(msg, str) else json.dumps(msg)
+                s = msg if isinstance(msg, str) else json.dumps(msg)
+                if lm.INTERRUPT_MARK in s:
+                    # 프롬프트 있는 turn이면 그 turn이 중단된 것, 없으면 직전 완료 turn이 중단된 것
+                    if cur.get("prompt"):
+                        cur["interrupted"] = True
+                    elif turns:
+                        turns[-1]["interrupted"] = True
+                else:
+                    cur["prompt"] = s
             elif pt == "agent_message":
                 m = p.get("message", "")
                 if isinstance(m, str):
@@ -185,12 +194,14 @@ def parse_turns(path):
                     cur["input_tokens"] = lu.get("input_tokens", cur["input_tokens"]) or 0
                     cur["output_tokens"] = lu.get("output_tokens", cur["output_tokens"]) or 0
                     cur["reasoning_tokens"] = lu.get("reasoning_output_tokens", cur["reasoning_tokens"]) or 0
+                    cur["cache_read"] = lu.get("cached_input_tokens", cur["cache_read"]) or 0
                     cur["usage"] = lu
                 cur["model"] = model
             elif t == "response_item" and pt and "call" in pt:
                 cur["tool_calls"] += 1
                 blob = json.dumps(p)  # apply_patch 편집 감지(근사)
                 if "apply_patch" in blob or "*** Update File" in blob or "*** Add File" in blob:
+                    cur["edit_events"] += 1
                     cur["code_files"] += blob.count("*** Update File") + blob.count("*** Add File")
                     cur["code_lines"] += blob.count("\\n+")
             elif pt == "task_complete":
@@ -269,7 +280,12 @@ def _run_locked():
                 "code_files": tn.get("code_files"),
                 "code_lines": tn.get("code_lines"),
                 "reasoning_tokens": tn.get("reasoning_tokens"),
-                "raw": {"reason": cls["reason"], "usage": tn.get("usage"), "turn": i},
+                "raw": {"reason": cls["reason"], "usage": tn.get("usage"), "turn": i,
+                        "quality": {
+                            "interrupted": tn.get("interrupted"),
+                            "edit_events": tn.get("edit_events"),
+                            "cache_read": tn.get("cache_read"),
+                        }},
             }
             lm.insert(env, row)
             new += 1

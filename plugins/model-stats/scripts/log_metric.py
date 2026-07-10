@@ -180,6 +180,15 @@ def is_human_user(entry):
     return False
 
 
+def _ms_between(a, b):
+    try:
+        t0 = datetime.fromisoformat((a or "").replace("Z", "+00:00"))
+        t1 = datetime.fromisoformat((b or "").replace("Z", "+00:00"))
+        return int((t1 - t0).total_seconds() * 1000)
+    except Exception:
+        return None
+
+
 def parse_transcript(path):
     """마지막 사람 프롬프트~응답 끝 구간에서 지표 추출."""
     entries = []
@@ -226,8 +235,11 @@ def parse_transcript(path):
     edit_events = 0       # 편집 tool_use 총 횟수(재편집 계산용)
     cache_read = 0        # 캐시 히트 토큰 총합
     cache_write = 0       # 캐시 생성 토큰 총합
+    active_ms = 0         # 순수 모델 생성시간(직전 항목~assistant 간격 합; 도구/승인 대기 제외)
+    prev_ts = user_ts
 
     for e in entries[ui + 1:]:
+        ets = e.get("timestamp")
         if e.get("type") == "user":
             # 응답 중간에 낀 interrupt 마커 감지(다음 실제 프롬프트 전까지)
             cc = e.get("message", {}).get("content")
@@ -236,8 +248,12 @@ def parse_transcript(path):
                 if isinstance(cc, list) else "")
             if INTERRUPT_MARK in s:
                 interrupted = True
+            if ets:
+                prev_ts = ets  # tool_result 등도 다음 생성시간 기준점
             continue
         if e.get("type") != "assistant":
+            if ets:
+                prev_ts = ets
             continue
         msg = e.get("message", {})
         model = msg.get("model", model)
@@ -270,16 +286,14 @@ def parse_transcript(path):
                         resp_text_parts.append(b.get("text", ""))
                     elif b.get("type") == "thinking":
                         thinking_blocks += 1
-        if e.get("timestamp"):
-            last_ts = e["timestamp"]
+        if ets:
+            d = _ms_between(prev_ts, ets)
+            if d and d > 0:
+                active_ms += d
+            last_ts = ets
+            prev_ts = ets
 
-    duration_ms = None
-    try:
-        t0 = datetime.fromisoformat(user_ts.replace("Z", "+00:00"))
-        t1 = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
-        duration_ms = int((t1 - t0).total_seconds() * 1000)
-    except Exception:
-        pass
+    duration_ms = _ms_between(user_ts, last_ts)
 
     return {
         "prompt": prompt,
@@ -303,6 +317,7 @@ def parse_transcript(path):
         "re_edits": max(0, edit_events - len(edited_files)),  # 같은 파일 반복 편집 = 시행착오 신호
         "cache_read": cache_read,
         "cache_write": cache_write,
+        "active_ms": active_ms,
     }
 
 
@@ -589,6 +604,7 @@ def run_worker(tmp):
                     "thinking_blocks": data.get("thinking_blocks"),
                     "cache_read": data.get("cache_read"),
                     "cache_write": data.get("cache_write"),
+                    "active_ms": data.get("active_ms"),
                 }},
     }
     insert(env, row)
