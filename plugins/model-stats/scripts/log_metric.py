@@ -12,6 +12,7 @@ import sys
 import tempfile
 import urllib.request
 import urllib.error
+import urllib.parse
 from datetime import datetime, timezone
 
 # Windows: hook 실행 시 뜨는 콘솔 창 즉시 숨김(스크립트로 직접 실행될 때만).
@@ -149,6 +150,21 @@ def blocks_text(content):
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Update"}
 INTERRUPT_MARK = "[Request interrupted by user]"  # 사용자가 응답 중단 시 다음 user 항목에 삽입
+
+# 다음 턴이 직전 턴을 재작업/부정하는 신호(성과 self-report 교차검증). 원본 outcome은 보존.
+REWORK_KEYWORDS = [
+    "다시", "again", "안 돼", "안돼", "안됨", "안 됨", "안 된", "안된",
+    "틀렸", "틀림", "틀리", "왜 안", "왜안", "아직도", "여전히", "still",
+    "안 고쳐", "못 고쳐", "안고쳐", "되돌려", "revert", "롤백", "rollback",
+    "원래대로", "그게 아니", "안 바뀌", "안바뀌", "doesn't work", "not work",
+    "그대로야", "그대로네", "여전", "실패했", "에러 나", "오류 나",
+]
+
+
+def is_rework(prompt):
+    """다음 턴 프롬프트가 직전 턴 결과에 대한 재작업/불만 신호인가."""
+    text = (prompt or "").lower()
+    return any(k in text for k in REWORK_KEYWORDS)
 
 
 def _code_metric(name, inp):
@@ -525,6 +541,33 @@ def insert(env, row):
         log(f"insert error: {ex}")
 
 
+def patch_signal(env, sid, user_ts, signal):
+    """직전 턴(session_id+raw.user_ts) 행에 outcome_signal 소급 기록.
+    이미 값이 있으면(interrupted 등) 덮지 않음(outcome_signal=is.null 조건)."""
+    url = env.get("SUPABASE_URL")
+    key = env.get("SUPABASE_KEY")
+    if not url or not key or not sid or not user_ts:
+        return
+    endpoint = (url.rstrip("/") + f"/rest/v1/{TABLE}"
+                + "?session_id=eq." + urllib.parse.quote(str(sid), safe="")
+                + "&raw->>user_ts=eq." + urllib.parse.quote(str(user_ts), safe="")
+                + "&outcome_signal=is.null")
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    try:
+        req = urllib.request.Request(
+            endpoint, data=json.dumps({"outcome_signal": signal}).encode(),
+            headers=headers, method="PATCH")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            log(f"patch signal ok {r.status} {sid} {user_ts} -> {signal}")
+    except Exception as ex:
+        log(f"patch signal error: {ex}")
+
+
 # ---------- worker(detached) ----------
 def run_worker(tmp):
     try:
@@ -559,9 +602,15 @@ def run_worker(tmp):
         state = json.load(open(state_path, encoding="utf-8"))
     except Exception:
         pass
-    if sid and data.get("user_ts") and state.get(sid) == data["user_ts"]:
+    prev = state.get(sid)
+    prev_ts = prev.get("user_ts") if isinstance(prev, dict) else prev  # 하위호환(구버전 문자열)
+    if sid and data.get("user_ts") and prev_ts == data["user_ts"]:
         log(f"skip already-logged turn: {sid} {data['user_ts']}")
         return
+
+    # 직전 턴 소급 보정: 현재 프롬프트가 직전 턴 결과에 대한 재작업/불만 신호면 표시
+    if isinstance(prev, dict) and prev.get("user_ts") and is_rework(data["prompt"]):
+        patch_signal(env, sid, prev["user_ts"], "reworked")
 
     # 서브에이전트(사이드체인) 정확 합산: 같은 promptId 파일만 귀속, 모델별 비용.
     # classify 전에 합산 → 난이도(작업량 기반)에도 서브 작업량이 반영됨.
@@ -595,6 +644,7 @@ def run_worker(tmp):
         "code_files": data.get("code_files"),
         "code_lines": data.get("code_lines"),
         "reasoning_tokens": data.get("reasoning_tokens"),
+        "outcome_signal": ("interrupted" if data.get("interrupted") else None),  # reworked는 다음 턴 소급
         "raw": {"reason": cls.get("reason"), "usage": data["usage_raw"], "user_ts": data.get("user_ts"),
                 "subagents": sub["breakdown"], "subagent_input_tokens": sub["input_tokens"],
                 "quality": {
@@ -609,7 +659,7 @@ def run_worker(tmp):
     }
     insert(env, row)
     if sid and data.get("user_ts"):
-        state[sid] = data["user_ts"]
+        state[sid] = {"user_ts": data["user_ts"]}  # 다음 턴 소급 보정 기준
         try:
             with open(state_path, "w", encoding="utf-8") as f:
                 json.dump(state, f)

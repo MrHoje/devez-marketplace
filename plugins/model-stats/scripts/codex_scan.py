@@ -286,6 +286,10 @@ def _run_locked():
             if not tn.get("prompt"):
                 continue
             cls = lm.classify(tn["prompt"], tn["response"], tn, env)
+            # 성과 신호: 중단됐거나(자기 턴), 다음 턴이 재작업/불만이면(배치라 즉시 판정)
+            signal = ("interrupted" if tn.get("interrupted")
+                      else "reworked" if (i + 1 < len(turns) and lm.is_rework(turns[i + 1].get("prompt", "")))
+                      else None)
             cwd = tn.get("cwd") or ""
             row = {
                 "source": "codex",
@@ -306,6 +310,7 @@ def _run_locked():
                 "code_files": tn.get("code_files"),
                 "code_lines": tn.get("code_lines"),
                 "reasoning_tokens": tn.get("reasoning_tokens"),
+                "outcome_signal": signal,
                 "raw": {"reason": cls["reason"], "usage": tn.get("usage"), "turn": i,
                         "quality": {
                             "interrupted": tn.get("interrupted"),
