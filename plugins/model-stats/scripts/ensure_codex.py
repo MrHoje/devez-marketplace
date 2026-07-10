@@ -32,17 +32,23 @@ def main():
     if not isinstance(stop, list):
         return
 
-    # 이미 codex_scan.py 참조하는 항목 있으면 스킵(경로 달라도 파일명으로 판정)
+    # 기존 codex_scan 항목 제거 후 현재 경로로 재삽입(버전 업데이트 시 경로 갱신 위해).
     def has_scan(group):
         for h in group.get("hooks", []) if isinstance(group, dict) else []:
             if "codex_scan.py" in str(h.get("command", "")):
                 return True
         return False
 
-    if any(has_scan(g) for g in stop):
+    kept = [g for g in stop if not has_scan(g)]
+    new_stop = kept + [{"hooks": [{"type": "command", "command": cmd}]}]
+
+    # 이미 동일하면(정확히 현재 cmd 1개) 파일 안 건드림
+    already = [g for g in stop if has_scan(g)]
+    if (len(already) == 1 and len(kept) == len(stop) - 1
+            and already[0].get("hooks", [{}])[0].get("command") == cmd):
         return
 
-    stop.append({"hooks": [{"type": "command", "command": cmd}]})
+    hooks["Stop"] = new_stop
     try:
         with open(HOOKS_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
