@@ -71,6 +71,19 @@ def log(msg):
         pass
 
 
+def con_diag(tag):
+    """진단: 이 프로세스에 콘솔창 있는지/보이는지 기록(깜빡임 범인 추적용)."""
+    try:
+        if os.name != "nt":
+            return
+        import ctypes
+        h = ctypes.windll.kernel32.GetConsoleWindow()
+        vis = ctypes.windll.user32.IsWindowVisible(h) if h else 0
+        log(f"diag {tag} con={h} vis={vis} exe={os.path.basename(sys.executable)}")
+    except Exception:
+        pass
+
+
 def load_env():
     d = {}
     try:
@@ -451,8 +464,10 @@ def spawn_worker(hook):
 
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "--worker":
+        con_diag("lm-worker")
         run_worker(sys.argv[2])
     else:
+        con_diag("lm-parent")
         try:
             hook = json.loads(sys.stdin.read() or "{}")
         except Exception:

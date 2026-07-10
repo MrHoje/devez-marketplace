@@ -249,8 +249,10 @@ def _spawn_detached():
 if __name__ == "__main__":
     import sys
     if "--run" in sys.argv:
+        lm.con_diag("cs-run")
         run()
     else:
+        lm.con_diag("cs-parent")
         try:
             _spawn_detached()
         except Exception as e:
