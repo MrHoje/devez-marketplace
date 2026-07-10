@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -X utf8 \"${CLAUDE_PLUGIN_ROOT}/scripts/log_metric.py\""
+            "command": "pythonw -X utf8 \"${CLAUDE_PLUGIN_ROOT}/scripts/log_metric.py\""
           }
         ]
       }
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -X utf8 \"${CLAUDE_PLUGIN_ROOT}/scripts/ensure_codex.py\""
+            "command": "pythonw -X utf8 \"${CLAUDE_PLUGIN_ROOT}/scripts/ensure_codex.py\""
           }
         ]
       }
