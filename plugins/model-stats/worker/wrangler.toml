@@ -1,0 +1,7 @@
+name = "model-stats-classify"
+main = "index.js"
+compatibility_date = "2024-11-01"
+
+# 시크릿(repo에 없음, wrangler secret put로 설정):
+#   DEEPSEEK_API_KEY  — DeepSeek API 키
+#   PLUGIN_TOKEN      — 플러그인이 보낼 공유 토큰(임베드됨)

@@ -70,7 +70,9 @@ def parse_turns(path):
         elif pt == "task_started":
             cur = {"start": ts, "end": ts, "model": model, "cwd": cwd,
                    "prompt": "", "response": "", "input_tokens": 0,
-                   "output_tokens": 0, "tool_calls": 0, "usage": {}}
+                   "output_tokens": 0, "tool_calls": 0, "usage": {},
+                   "code_files": 0, "code_lines": 0, "reasoning_tokens": 0,
+                   "cost_usd": 0.0}
         elif cur is not None:
             if pt == "user_message":
                 msg = p.get("message") or p.get("text") or ""
@@ -84,13 +86,19 @@ def parse_turns(path):
                 if lu:
                     cur["input_tokens"] = lu.get("input_tokens", cur["input_tokens"]) or 0
                     cur["output_tokens"] = lu.get("output_tokens", cur["output_tokens"]) or 0
+                    cur["reasoning_tokens"] = lu.get("reasoning_output_tokens", cur["reasoning_tokens"]) or 0
                     cur["usage"] = lu
                 cur["model"] = model
             elif t == "response_item" and pt and "call" in pt:
                 cur["tool_calls"] += 1
+                blob = json.dumps(p)  # apply_patch 편집 감지(근사)
+                if "apply_patch" in blob or "*** Update File" in blob or "*** Add File" in blob:
+                    cur["code_files"] += blob.count("*** Update File") + blob.count("*** Add File")
+                    cur["code_lines"] += blob.count("\\n+")
             elif pt == "task_complete":
                 cur["end"] = ts
                 cur["duration_ms"] = _dur_ms(cur["start"], ts)
+                cur["cost_usd"] = round(lm.cost_codex(cur.get("usage") or {}, cur.get("model")), 6)
                 turns.append(cur)
                 cur = None
     return session_id, turns
@@ -127,7 +135,7 @@ def run():
             tn = turns[i]
             if not tn.get("prompt"):
                 continue
-            cls = lm.classify(tn["prompt"], tn["response"], tn)
+            cls = lm.classify(tn["prompt"], tn["response"], tn, env)
             cwd = tn.get("cwd") or ""
             row = {
                 "source": "codex",
@@ -136,10 +144,17 @@ def run():
                 "model": tn.get("model"),
                 "category": cls["category"],
                 "difficulty": cls["difficulty"],
+                "difficulty_llm": cls.get("difficulty_llm"),
+                "domain": cls.get("domain"),
+                "outcome": cls.get("outcome"),
                 "input_tokens": tn["input_tokens"],
                 "output_tokens": tn["output_tokens"],
                 "tool_calls": tn["tool_calls"],
                 "duration_ms": tn.get("duration_ms"),
+                "cost_usd": tn.get("cost_usd"),
+                "code_files": tn.get("code_files"),
+                "code_lines": tn.get("code_lines"),
+                "reasoning_tokens": tn.get("reasoning_tokens"),
                 "raw": {"reason": cls["reason"], "usage": tn.get("usage"), "turn": i},
             }
             lm.insert(env, row)

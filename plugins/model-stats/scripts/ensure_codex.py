@@ -16,7 +16,7 @@ SCAN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_scan.py")
 def main():
     if not os.path.isdir(CODEX_DIR):
         return  # Codex 미설치
-    cmd = f'python "{SCAN.replace(os.sep, "/")}"'
+    cmd = f'python -X utf8 "{SCAN.replace(os.sep, "/")}"'
 
     data = {"hooks": {}}
     if os.path.exists(HOOKS_PATH):
