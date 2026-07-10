@@ -253,6 +253,7 @@ def parse_transcript(path):
     cache_write = 0       # 캐시 생성 토큰 총합
     active_ms = 0         # 순수 모델 생성시간(직전 항목~assistant 간격 합; 도구/승인 대기 제외)
     prev_ts = user_ts
+    usage_by_id = {}      # message.id별 최종 usage(분할/스트리밍 스냅샷 중복 → 마지막이 최종값). 루프 후 합산
 
     for e in entries[ui + 1:]:
         ets = e.get("timestamp")
@@ -273,18 +274,11 @@ def parse_transcript(path):
             continue
         msg = e.get("message", {})
         model = msg.get("model", model)
+        mid = msg.get("id")
         usage = msg.get("usage", {}) or {}
         if usage:
-            usage_raw = usage
-            ctx = (usage.get("input_tokens", 0)
-                   + usage.get("cache_read_input_tokens", 0)
-                   + usage.get("cache_creation_input_tokens", 0))
-            if ctx:
-                input_tokens = ctx
-            output_tokens += usage.get("output_tokens", 0) or 0
-            cache_read += usage.get("cache_read_input_tokens", 0) or 0
-            cache_write += usage.get("cache_creation_input_tokens", 0) or 0
-            cost_usd += cost_claude(usage, model)
+            # 같은 id의 분할/스트리밍 항목은 마지막(최종) usage로 덮어씀 → id당 1회만 반영
+            usage_by_id[mid if mid is not None else id(e)] = (usage, model)
         content = msg.get("content", [])
         if isinstance(content, list):
             for b in content:
@@ -308,6 +302,18 @@ def parse_transcript(path):
                 active_ms += d
             last_ts = ets
             prev_ts = ets
+
+    for _u, _m in usage_by_id.values():
+        usage_raw = _u
+        _ctx = (_u.get("input_tokens", 0)
+                + _u.get("cache_read_input_tokens", 0)
+                + _u.get("cache_creation_input_tokens", 0))
+        if _ctx:
+            input_tokens = _ctx  # 마지막 응답의 컨텍스트 크기
+        output_tokens += _u.get("output_tokens", 0) or 0
+        cache_read += _u.get("cache_read_input_tokens", 0) or 0
+        cache_write += _u.get("cache_creation_input_tokens", 0) or 0
+        cost_usd += cost_claude(_u, _m)
 
     duration_ms = _ms_between(user_ts, last_ts)
 
@@ -358,6 +364,7 @@ def parse_subagents(transcript_path, prompt_id):
         lines = 0
         inp = 0
         files = set()
+        usage_by_id = {}  # message.id별 최종 usage(분할/스트리밍 중복 방지)
         try:
             with open(p, encoding="utf-8") as f:
                 for line in f:
@@ -376,15 +383,10 @@ def parse_subagents(transcript_path, prompt_id):
                         continue
                     msg = e.get("message", {})
                     model = msg.get("model", model)
+                    mid = msg.get("id")
                     usage = msg.get("usage", {}) or {}
                     if usage:
-                        out += usage.get("output_tokens", 0) or 0
-                        cost += cost_claude(usage, model)
-                        ctx = (usage.get("input_tokens", 0)
-                               + usage.get("cache_read_input_tokens", 0)
-                               + usage.get("cache_creation_input_tokens", 0))
-                        if ctx:
-                            inp = ctx  # 서브 컨텍스트 최종 크기
+                        usage_by_id[mid if mid is not None else id(e)] = (usage, model)
                     content = msg.get("content", [])
                     if isinstance(content, list):
                         for b in content:
@@ -397,6 +399,14 @@ def parse_subagents(transcript_path, prompt_id):
         except Exception as ex:
             log(f"subagent read fail {os.path.basename(p)}: {ex}")
             continue
+        for _u, _m in usage_by_id.values():  # id당 최종 usage만 합산
+            out += _u.get("output_tokens", 0) or 0
+            cost += cost_claude(_u, _m)
+            _ctx = (_u.get("input_tokens", 0)
+                    + _u.get("cache_read_input_tokens", 0)
+                    + _u.get("cache_creation_input_tokens", 0))
+            if _ctx:
+                inp = _ctx
         if pid != prompt_id:  # 다른 턴에서 생성된 서브에이전트 → 제외
             continue
         agg["output_tokens"] += out
