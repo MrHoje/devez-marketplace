@@ -258,6 +258,7 @@ def parse_transcript(path):
     return {
         "prompt": prompt,
         "response": "\n".join(resp_text_parts),
+        "user_ts": user_ts,  # 턴 멱등키(같은 프롬프트 턴 재기록 방지)
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -422,6 +423,19 @@ def run_worker(tmp):
         log("no human prompt found")
         return
 
+    # 멱등: 같은 세션의 같은 프롬프트 턴(user_ts)은 한 번만 기록
+    # (인터럽트 후 재개, 세션 재개 등으로 Stop이 같은 턴에 재발화하는 경우 방어)
+    sid = hook.get("session_id")
+    state_path = os.path.join(CONFIG_DIR, "claude_state.json")
+    state = {}
+    try:
+        state = json.load(open(state_path, encoding="utf-8"))
+    except Exception:
+        pass
+    if sid and data.get("user_ts") and state.get(sid) == data["user_ts"]:
+        log(f"skip already-logged turn: {sid} {data['user_ts']}")
+        return
+
     cls = classify(data["prompt"], data["response"], data, env)
     cwd = hook.get("cwd", "")
     row = {
@@ -442,9 +456,16 @@ def run_worker(tmp):
         "code_files": data.get("code_files"),
         "code_lines": data.get("code_lines"),
         "reasoning_tokens": data.get("reasoning_tokens"),
-        "raw": {"reason": cls.get("reason"), "usage": data["usage_raw"]},
+        "raw": {"reason": cls.get("reason"), "usage": data["usage_raw"], "user_ts": data.get("user_ts")},
     }
     insert(env, row)
+    if sid and data.get("user_ts"):
+        state[sid] = data["user_ts"]
+        try:
+            with open(state_path, "w", encoding="utf-8") as f:
+                json.dump(state, f)
+        except Exception:
+            pass
 
 
 def real_pyw():
