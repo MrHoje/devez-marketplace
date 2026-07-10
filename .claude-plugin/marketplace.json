@@ -1,6 +1,6 @@
 {
   "name": "devez-marketplace",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "owner": {
     "name": "MrHoje"
   },
@@ -16,6 +16,12 @@
       "version": "0.3.15",
       "source": "./plugins/model-stats",
       "description": "⚠️ claude, codex 실 사용 비교를 위한 플러그인으로 지정된 사용자 외 설치하지 마세요(기록이 소유자 Supabase로 감).\nClaude Code + Codex 프롬프트 계측. 매 턴을 카테고리/난이도/도메인/성패로 분류(CF Worker=DeepSeek 대행, 실패 시 로컬 규칙)하고 비용·코드산출까지 Supabase 집계. 설치만으로 동작(키 내장, Codex hook 자동주입). Stop hook + /model-stats 커맨드 + 비교 대시보드."
+    },
+    {
+      "name": "devez",
+      "version": "0.1.0",
+      "source": "./plugins/devez",
+      "description": "DevezCode 전용 세션 릴레이 커맨드 — /devez:send(다른 세션에 대화 맥락 정리해 지시 전달), /devez:child(자식 세션 생성·위임), /devez:pick(다른 세션 대화 내용 읽어와 숙지). DevezCode 앱의 릴레이 스크립트에 의존하므로 DevezCode에서만 활성화."
     }
   ]
 }
