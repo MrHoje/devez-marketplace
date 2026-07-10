@@ -23,12 +23,14 @@ SCAN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "codex_scan.py")
 
 
 def _py_exe():
-    """Windows면 콘솔 안 뜨는 pythonw 절대경로, 아니면 python."""
+    """Windows면 콘솔 안 뜨는 pythonw 절대경로, 아니면 python.
+    실행 중 인터프리터 옆 pythonw 우선(가장 안정) → PATH의 pythonw 폴백."""
     if os.name == "nt":
+        sib = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if os.path.exists(sib):
+            return sib
         import shutil
         cand = shutil.which("pythonw")
-        if not cand:
-            cand = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
         if cand and os.path.exists(cand):
             return cand
     return "python"
