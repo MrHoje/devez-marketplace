@@ -19,6 +19,6 @@ allowed-tools: Bash, Write
 4. **브리핑을 임시 파일로 저장** — Write 도구로 스크래치패드에 저장합니다(예: `child-brief.md`).
 5. **자식 세션 생성 요청** — Bash 로 아래를 실행합니다(이름과 브리핑 파일을 넘김):
    ```
-   node "C:/source/devezCode/plugins/devez-relay/scripts/send-new.js" --name "<15자이내 이름>" --brief-file "<브리핑파일 절대경로>"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/send-new.js" --name "<15자이내 이름>" --brief-file "<브리핑파일 절대경로>"
    ```
 6. **보고** — 명령 출력(성공/실패)을 사용자에게 한 줄로 전합니다. 자식 세션 생성·브리핑 주입은 DevezCode 가 처리합니다.

@@ -12,7 +12,7 @@ allowed-tools: Bash, Read
 1. **대상 세션 이름 추출** — 요청 문장에서 대상 세션 이름을 찾습니다(공백 표기 차이는 자동 보정됨).
 2. **대화 내용 가져오기** — Bash 로 실행:
    ```
-   node "C:/source/devezCode/plugins/devez-relay/scripts/devez-pick.js" --session "<대상 세션 이름>"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/devez-pick.js" --session "<대상 세션 이름>"
    ```
    출력의 `읽을 파일:` 경로를 확인합니다. (대화가 길면 `--last 40` 처럼 최근 N턴만 가져올 수 있습니다.)
 3. **숙지** — 그 파일을 Read 로 읽어 대상 세션이 무엇을 논의/결정/작업했는지 파악합니다. (파일이 크면 나눠 읽어도 됩니다.)

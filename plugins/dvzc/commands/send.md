@@ -17,6 +17,6 @@ allowed-tools: Bash, Write
    > 대상 세션은 보통 같은 프로젝트라 코드베이스·CLAUDE.md 는 이미 접근 가능합니다. 프로젝트에 이미 있는 내용을 장황히 옮기지 말고 "이 작업에 필요한 맥락"에 집중하세요.
 4. **파일로 저장 후 전달** — Write 로 지시문을 임시 파일에 저장한 뒤:
    ```
-   node "C:/source/devezCode/plugins/devez-relay/scripts/send.js" --target "<대상 세션 이름>" --brief-file "<지시문파일 절대경로>"
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/send.js" --target "<대상 세션 이름>" --brief-file "<지시문파일 절대경로>"
    ```
 5. **보고** — 명령 출력(성공/실패)을 사용자에게 한 줄로 전합니다.
