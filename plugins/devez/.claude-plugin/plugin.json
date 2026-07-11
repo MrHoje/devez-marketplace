@@ -1,8 +1,0 @@
-{
-  "name": "devez",
-  "version": "0.1.0",
-  "description": "DevezCode 전용 세션 릴레이 커맨드 — /devez:send(다른 세션에 대화 맥락 정리해 지시 전달), /devez:child(자식 세션 생성·위임), /devez:pick(다른 세션 대화 내용 읽어와 숙지). DevezCode 앱의 세션 릴레이 스크립트에 의존하므로 DevezCode에서만 동작.",
-  "author": {
-    "name": "MrHoje"
-  }
-}
