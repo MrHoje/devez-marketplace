@@ -1,5 +1,5 @@
 ---
-description: 현재 세션의 자식 세션을 만들어 작업을 위임한다(대화 맥락을 브리핑으로 전달)
+description: (DevezCode 전용) 현재 세션의 자식 세션을 만들어 작업을 위임한다(대화 맥락을 브리핑으로 전달)
 argument-hint: <위임할 작업 설명>
 allowed-tools: Bash, Write
 ---

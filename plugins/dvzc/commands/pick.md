@@ -1,5 +1,5 @@
 ---
-description: 다른 세션의 대화/작업 내용을 읽어와 현재 세션이 숙지한다
+description: (DevezCode 전용) 다른 세션의 대화/작업 내용을 읽어와 현재 세션이 숙지한다
 argument-hint: <세션이름>에서 작업한 내용 <읽어/merge해/요약해 등>
 allowed-tools: Bash, Read
 ---

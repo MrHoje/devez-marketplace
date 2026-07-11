@@ -1,5 +1,5 @@
 ---
-description: 다른 세션에 대화 맥락을 정리해 지시를 전달한다(기존 세션 대상)
+description: (DevezCode 전용) 다른 세션에 대화 맥락을 정리해 지시를 전달한다(기존 세션 대상)
 argument-hint: <세션이름> <시킬 일>
 allowed-tools: Bash, Write
 ---
