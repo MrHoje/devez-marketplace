@@ -22,10 +22,10 @@ function fail(m) { console.error(m); process.exit(1); }
 
 // ── 인자 ──
 const argv = process.argv.slice(2);
-let sessionArg = null, lastN = 0;
+let sessionArg = null, lastN = -1;   // -1 = 미지정(자동 캡), 0 = 전체, N>0 = 최근 N개 요청
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--session') sessionArg = argv[++i];
-  else if (argv[i] === '--last') lastN = parseInt(argv[++i], 10) || 0;
+  else if (argv[i] === '--last') { const v = parseInt(argv[++i], 10); lastN = Number.isNaN(v) ? -1 : v; }
   else if (!sessionArg) sessionArg = argv[i];
 }
 sessionArg = (sessionArg || '').trim();
@@ -106,20 +106,80 @@ for (const line of lines) {
   turns.push({ role, text: texts.join('\n') });
 }
 
-let picked = turns;
-if (lastN > 0 && turns.length > lastN) picked = turns.slice(-lastN);
+// 연속된 같은 역할 턴을 하나로 병합 (도구 라운드로 쪼개진 Claude 응답을 한 블록으로)
+const merged = [];
+for (const t of turns) {
+  const last = merged[merged.length - 1];
+  if (last && last.role === t.role) last.text += '\n' + t.text;
+  else merged.push({ role: t.role, text: t.text });
+}
 
-const label = r => (r === 'assistant' ? 'Claude' : '사용자');
-const body = picked.map(t => `=== ${label(t.role)} ===\n${t.text}`).join('\n\n');
+// "요청(exchange)" 단위로 묶기: 사용자 턴이 새 요청을 시작하고, 이어지는 Claude 턴이 그 응답
+const exchanges = [];
+for (const t of merged) {
+  if (t.role === 'user' || exchanges.length === 0) exchanges.push([t]);
+  else exchanges[exchanges.length - 1].push(t);
+}
+// 절대 요청 번호 부여 (앞부분이 잘려도 실제 몇 번째 요청인지 유지). 사용자로 시작 안 하는 선두 블록은 0.
+let reqTotal = 0;
+for (const ex of exchanges) ex._no = ex[0].role === 'user' ? ++reqTotal : 0;
+
+function renderExchange(ex) {
+  const head = ex._no ? `━━━━━━━━━━ 요청 ${ex._no} ━━━━━━━━━━` : '━━━━━━━━━━ (이전 응답) ━━━━━━━━━━';
+  const parts = [head];
+  for (const t of ex) {
+    parts.push(t.role === 'assistant' ? '[Claude]' : '[사용자]');
+    parts.push(t.text, '');
+  }
+  return parts.join('\n').trimEnd();
+}
+
+// 표시 범위 결정
+//  --last 0        → 전체 (캡 없음)
+//  --last N (N>0)  → 최근 N개 요청
+//  미지정(-1)      → 자동 캡: 최근 요청부터 CAP_BYTES 이내까지 (최소 1개는 유지)
+const CAP_BYTES = 100 * 1024;
+let picked = exchanges;
+let capped = false;
+if (lastN > 0) {
+  if (exchanges.length > lastN) { picked = exchanges.slice(-lastN); capped = true; }
+} else if (lastN < 0) {
+  const kept = [];
+  let bytes = 0;
+  for (let i = exchanges.length - 1; i >= 0; i--) {
+    const b = Buffer.byteLength(renderExchange(exchanges[i]), 'utf8') + 2;
+    if (kept.length > 0 && bytes + b > CAP_BYTES) break;   // 최소 1개(가장 최근)는 항상 유지
+    kept.unshift(exchanges[i]);
+    bytes += b;
+  }
+  if (kept.length < exchanges.length) capped = true;
+  picked = kept;
+}
+
+const body = picked.map(renderExchange).join('\n\n');
+const shownFrom = picked.length ? picked[0]._no : 0;
+const shownTo = picked.length ? picked[picked.length - 1]._no : 0;
+const range = capped ? ` (최근 요청 ${shownFrom}~${shownTo}만 표시, 이전 생략 — 전체는 --last 0)` : '';
 const header = `# 세션 '${sess.name}' 대화 내용\n`
   + `- 프로젝트: ${sess.projectName || sess.projectPath}\n`
   + `- sessionId: ${sessionId}\n`
-  + `- 총 턴: ${turns.length}${lastN > 0 ? ` (최근 ${picked.length}개만 표시)` : ''}\n\n`;
+  + `- 총 요청: ${reqTotal}개${range}\n\n`;
 
 const outDir = path.join(base, 'picks');
 try { fs.mkdirSync(outDir, { recursive: true }); } catch {}
+// 안전망: 이전 실행에서 삭제 못 하고 남은 오래된(1시간 초과) pick 파일 정리
+try {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  for (const f of fs.readdirSync(outDir)) {
+    if (!f.endsWith('.md')) continue;
+    const fp = path.join(outDir, f);
+    try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch {}
+  }
+} catch {}
 const outFile = path.join(outDir, crypto.randomUUID() + '.md');
 fs.writeFileSync(outFile, header + body, 'utf8');
 
-console.log(`✅ '${sess.name}' 세션 대화를 정리했습니다 (턴 ${turns.length}개, ${Math.round((header.length + body.length) / 1024)}KB).`);
+const shownReq = picked.filter(e => e._no).length;
+console.log(`✅ '${sess.name}' 세션 대화를 정리했습니다 (요청 ${reqTotal}개${capped ? `, 최근 ${shownReq}개만` : ''}, ${Math.round(Buffer.byteLength(header + body, 'utf8') / 1024)}KB).`);
 console.log(`읽을 파일: ${outFile}`);
+console.log('(1회용 임시 파일입니다. 다 읽은 뒤 삭제하세요.)');
