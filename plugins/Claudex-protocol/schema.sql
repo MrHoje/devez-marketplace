@@ -7,6 +7,7 @@ create table if not exists public.model_metrics (
   session_id        text,
   project           text,          -- cwd basename
   model             text,          -- 실제 응답 모델 (비교축)
+  effort            text,          -- 추론 강도 (codex: low/medium/high/xhigh; claude 미기록)
   category          text,          -- simple_bug/mystery_bug/feature/refactor/deep_reasoning/research/config_ops/question
   difficulty        text,          -- 하/중/상/최상 (작업량 기반)
   difficulty_llm    text,          -- 하/중/상/최상 (프롬프트 본질, LLM 판정)
@@ -33,6 +34,7 @@ alter table public.model_metrics add column if not exists code_files       int;
 alter table public.model_metrics add column if not exists code_lines       int;
 alter table public.model_metrics add column if not exists reasoning_tokens int;
 alter table public.model_metrics add column if not exists outcome_signal   text;
+alter table public.model_metrics add column if not exists effort           text;
 
 -- codex 중복 적재 방지(동시 스캐너 경합 대비 최종 방어선)
 create unique index if not exists idx_mm_codex_turn

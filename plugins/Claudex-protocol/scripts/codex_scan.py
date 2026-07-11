@@ -26,7 +26,7 @@ STATE_PATH = os.path.join(lm.CONFIG_DIR, "codex_state.json")
 MAX_AGE_DAYS = 14
 
 HOOKS_PATH = os.path.join(os.path.expanduser("~"), ".codex", "hooks.json")
-PLUGIN_KEY = "model-stats@devez-marketplace"
+PLUGIN_KEY = "Claudex-protocol@devez-marketplace"
 CLAUDE_DIR = os.path.join(os.path.expanduser("~"), ".claude")
 
 # 동시 스캐너 경합 방지: Stop마다 detached 스캐너가 떠서 같은 state를 읽고
@@ -154,6 +154,7 @@ def parse_turns(path):
     """rollout 파일 → (session_id, [turn,...]). turn = task_started~task_complete 구간."""
     session_id = None
     model = None
+    effort = None
     cwd = None
     turns = []
     cur = None
@@ -176,9 +177,10 @@ def parse_turns(path):
             cwd = p.get("cwd", cwd)
         elif t == "turn_context":
             model = p.get("model", model)
+            effort = p.get("effort", effort)  # 추론 강도(low/medium/high/xhigh)
             cwd = p.get("cwd", cwd)
         elif pt == "task_started":
-            cur = {"start": ts, "end": ts, "model": model, "cwd": cwd,
+            cur = {"start": ts, "end": ts, "model": model, "effort": effort, "cwd": cwd,
                    "prompt": "", "response": "", "input_tokens": 0,
                    "output_tokens": 0, "tool_calls": 0, "usage": {},
                    "code_files": 0, "code_lines": 0, "reasoning_tokens": 0,
@@ -297,6 +299,7 @@ def _run_locked():
                 "session_id": sid,
                 "project": os.path.basename(cwd.rstrip("/\\")) if cwd else None,
                 "model": tn.get("model"),
+                "effort": tn.get("effort"),
                 "category": cls["category"],
                 "difficulty": cls["difficulty"],
                 "difficulty_llm": cls.get("difficulty_llm"),
