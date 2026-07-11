@@ -35,6 +35,9 @@ ENV_PATH = os.path.join(CONFIG_DIR, ".env")
 LOG_PATH = os.path.join(CONFIG_DIR, "metric.log")
 
 TABLE = "model_metrics"
+HOOK_VERSION = "0.3.21"
+SCHEMA_VERSION = "2.0"
+PRICING_VERSION = "2026-07-11"
 
 # 무설정 동작용 기본값(anon 키 = insert/select 전용, 통계만 — 프롬프트 본문 미저장).
 # ~/.model-stats/.env 나 환경변수(SUPABASE_URL/SUPABASE_KEY)로 덮어쓰기 가능.
@@ -577,7 +580,53 @@ def classify(prompt, response, metrics, env=None):
 
 
 # ---------- Supabase insert ----------
+def prepare_contract_row(row):
+    """Populate contract fields that are measured or deterministically derived."""
+    raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+    usage = raw.get("usage") if isinstance(raw.get("usage"), dict) else {}
+
+    if row.get("cached_input_tokens") is None:
+        cached = usage.get("cached_input_tokens")
+        if cached is None:
+            cached = usage.get("cache_read_input_tokens")
+        if cached is not None:
+            row["cached_input_tokens"] = cached
+    if row.get("cache_creation_input_tokens") is None:
+        cache_creation = usage.get("cache_creation_input_tokens")
+        if cache_creation is not None:
+            row["cache_creation_input_tokens"] = cache_creation
+
+    # These parsers inspect the full turn, so absence is a measured zero.
+    for field in ("tool_calls", "code_files", "code_lines"):
+        if row.get(field) is None:
+            row[field] = 0
+
+    row.setdefault("schema_version", SCHEMA_VERSION)
+    row.setdefault("hook_version", HOOK_VERSION)
+    row.setdefault("os", "windows" if os.name == "nt" else os.name)
+    row.setdefault("collection_status", "partial" if row.get("outcome_signal") == "interrupted" else "complete")
+    if row.get("cost_usd") is not None:
+        row.setdefault("pricing_version", PRICING_VERSION)
+
+    if not row.get("occurred_at"):
+        row["occurred_at"] = row.get("created_at") or datetime.now(timezone.utc).isoformat()
+    if not row.get("conversation_id") and row.get("session_id"):
+        row["conversation_id"] = row["session_id"]
+
+    turn_key = raw.get("turn")
+    if turn_key is None:
+        turn_key = raw.get("user_ts")
+    if turn_key is not None and row.get("session_id"):
+        stable_turn_id = f"{row['session_id']}:{turn_key}"
+        row.setdefault("turn_id", stable_turn_id)
+        row.setdefault("event_id", stable_turn_id)
+        if isinstance(turn_key, int):
+            row.setdefault("sequence_no", turn_key)
+    return row
+
+
 def insert(env, row):
+    row = prepare_contract_row(row)
     url = env.get("SUPABASE_URL")
     key = env.get("SUPABASE_KEY")
     if not url or not key:
