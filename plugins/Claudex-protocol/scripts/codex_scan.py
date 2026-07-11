@@ -182,8 +182,15 @@ def parse_turns(path):
             cwd = p.get("cwd", cwd)
         elif t == "turn_context":
             model = p.get("model", model)
-            effort = p.get("effort", effort)  # 추론 강도(low/medium/high/xhigh)
+            effort = lm.normalize_effort(p.get("effort")) or effort
             cwd = p.get("cwd", cwd)
+            # Newer Codex rollouts can emit task_started before turn_context.
+            # Keep the active turn synchronized instead of retaining None or
+            # the preceding turn's model/effort values.
+            if cur is not None:
+                cur["model"] = model
+                cur["effort"] = effort
+                cur["cwd"] = cwd
         elif pt == "task_started":
             cur = {"start": ts, "end": ts, "model": model, "effort": effort, "cwd": cwd,
                    "prompt": "", "response": "", "input_tokens": 0,
@@ -304,7 +311,7 @@ def _run_locked():
                 "session_id": sid,
                 "project": os.path.basename(cwd.rstrip("/\\")) if cwd else None,
                 "model": tn.get("model"),
-                "effort": tn.get("effort"),
+                "effort": lm.normalize_effort(tn.get("effort")),
                 "category": cls["category"],
                 "difficulty": cls["difficulty"],
                 "difficulty_llm": cls.get("difficulty_llm"),
