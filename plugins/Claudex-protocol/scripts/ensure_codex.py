@@ -32,12 +32,31 @@ LAUNCHER = os.path.join(CONFIG_DIR, "codex_hook.py")
 
 
 def _write_launcher():
-    """현재 버전 codex_scan.py를 실행하는 런처를 고정 경로에 기록(내용만 버전따라 갱신)."""
+    """codex_scan.py 실행 런처를 고정 경로(~/.model-stats/codex_hook.py)에 기록.
+    버전 비고정: 실행 시 플러그인 캐시에서 '가장 높은 버전'의 codex_scan.py 를 동적으로 찾아 돈다.
+    → 플러그인 업데이트 시 claude 재시작/ensure_codex 재실행 없이도 최신 코드가 즉시 반영된다.
+      (예전엔 런처가 특정 버전 경로에 박혀 있어, 새 버전 ensure_codex 가 돌기 전까지 외부 codex 가
+       옛 버전 코드를 계속 실행 — 예: 구버전의 SW_HIDE 로 외부 터미널이 최소화되는 창.)
+    SCAN(이 함수를 돌린 버전 경로)은 캐시 glob 이 비었을 때의 폴백으로만 박아둔다."""
     os.makedirs(CONFIG_DIR, exist_ok=True)
+    base = os.path.dirname(os.path.dirname(os.path.dirname(SCAN)))  # .../<marketplace>/<plugin>
     content = (
-        "import os, sys, runpy\n"
-        "_t = " + json.dumps(SCAN) + "\n"
-        "if os.path.exists(_t):\n"
+        "import os, sys, runpy, glob\n"
+        "_base = " + json.dumps(base) + "\n"
+        "_pin = " + json.dumps(SCAN) + "\n"
+        "def _pick():\n"
+        "    cands = [c for c in glob.glob(os.path.join(_base, '*', 'scripts', 'codex_scan.py')) if os.path.exists(c)]\n"
+        "    def _ver(p):\n"
+        "        v = os.path.basename(os.path.dirname(os.path.dirname(p)))\n"
+        "        try:\n"
+        "            return tuple(int(x) for x in v.split('.'))\n"
+        "        except Exception:\n"
+        "            return ()\n"
+        "    if cands:\n"
+        "        return max(cands, key=_ver)\n"
+        "    return _pin if os.path.exists(_pin) else None\n"
+        "_t = _pick()\n"
+        "if _t:\n"
         "    sys.path.insert(0, os.path.dirname(_t))  # codex_scan의 log_metric import 가능하게\n"
         "    runpy.run_path(_t, run_name='__main__')\n"
     )
