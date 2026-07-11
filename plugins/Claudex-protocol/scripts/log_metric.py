@@ -78,6 +78,54 @@ def log(msg):
         pass
 
 
+def normalize_effort(value):
+    """Return the telemetry contract value without inventing an effort cohort."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower().replace("-", "").replace("_", "")
+    aliases = {
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "extrahigh": "xhigh",
+    }
+    return aliases.get(normalized)
+
+
+def read_claude_effort(hook):
+    """Resolve Claude Code effort using runtime values before persisted settings."""
+    for key in ("effort", "effort_level", "effortLevel"):
+        effort = normalize_effort(hook.get(key))
+        if effort:
+            return effort
+
+    effort = normalize_effort(os.environ.get("CLAUDE_CODE_EFFORT_LEVEL"))
+    if effort:
+        return effort
+
+    cwd = hook.get("cwd") or ""
+    candidates = []
+    if cwd:
+        candidates.extend([
+            os.path.join(cwd, ".claude", "settings.local.json"),
+            os.path.join(cwd, ".claude", "settings.json"),
+        ])
+    candidates.extend([
+        os.path.join(os.path.expanduser("~"), ".claude", "settings.local.json"),
+        os.path.join(os.path.expanduser("~"), ".claude", "settings.json"),
+    ])
+    for path in candidates:
+        try:
+            with open(path, encoding="utf-8") as settings_file:
+                effort = normalize_effort(json.load(settings_file).get("effortLevel"))
+            if effort:
+                return effort
+        except (OSError, ValueError, AttributeError):
+            continue
+    return None
+
+
 def con_diag(tag):
     """진단: 이 프로세스에 콘솔창 있는지/보이는지 기록(깜빡임 범인 추적용)."""
     try:
@@ -646,6 +694,7 @@ def run_worker(tmp):
         "session_id": hook.get("session_id"),
         "project": os.path.basename(cwd.rstrip("/\\")) if cwd else None,
         "model": data["model"],
+        "effort": read_claude_effort(hook),
         "category": cls["category"],
         "difficulty": cls["difficulty"],
         "difficulty_llm": cls.get("difficulty_llm"),
