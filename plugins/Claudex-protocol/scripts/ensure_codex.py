@@ -11,8 +11,13 @@ import sys
 if os.name == "nt" and __name__ == "__main__":
     try:
         import ctypes
-        _w = ctypes.windll.kernel32.GetConsoleWindow()
-        if _w:
+        k = ctypes.windll.kernel32
+        _w = k.GetConsoleWindow()
+        # 우리가 단독 소유한 콘솔일 때만 숨긴다. codex 는 훅을 '터미널 콘솔 상속'으로 스폰하므로
+        # GetConsoleWindow() 가 사용자의 외부 터미널을 가리킨다 — 그때 SW_HIDE 하면 그 터미널 창이
+        # 통째로 숨겨진다(응답-종료 시 창 최소화). 콘솔에 붙은 프로세스가 우리 하나뿐(=우리가 만든
+        # 콘솔)일 때만 안전하게 숨긴다. claude 는 con=0(콘솔 없음)이라 애초에 no-op.
+        if _w and k.GetConsoleProcessList((ctypes.c_uint * 8)(), 8) <= 1:
             ctypes.windll.user32.ShowWindow(_w, 0)  # SW_HIDE
     except Exception:
         pass
