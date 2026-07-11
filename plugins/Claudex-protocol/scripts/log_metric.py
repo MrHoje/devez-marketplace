@@ -89,6 +89,7 @@ def normalize_effort(value):
         "high": "high",
         "xhigh": "xhigh",
         "extrahigh": "xhigh",
+        "max": "xhigh",
     }
     return aliases.get(normalized)
 
