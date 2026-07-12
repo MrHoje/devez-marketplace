@@ -7,6 +7,7 @@ log_metric의 분류기/insert/Supabase 설정 재사용. source='codex'.
 import glob
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 
@@ -155,6 +156,64 @@ def _dur_ms(start, end):
         return None
 
 
+def _decode_arguments(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _call_command(payload):
+    """Extract one shell command from known call envelopes; composite exec stays unknown."""
+    name = str(payload.get("name") or "").lower()
+    if name in ("shell_command", "exec_command"):
+        return _decode_arguments(payload.get("arguments")).get("command")
+    if name != "exec" or not isinstance(payload.get("input"), str):
+        return None
+    source = payload["input"]
+    if len(re.findall(r"\btools\.shell_command\s*\(", source)) != 1:
+        return None
+    matches = re.findall(r"(?:\bcommand|\"command\")\s*:\s*(\"(?:\\.|[^\"\\])*\")", source)
+    if len(matches) != 1:
+        return None
+    try:
+        return json.loads(matches[0])
+    except Exception:
+        return None
+
+
+def _patch_paths(payload):
+    value = payload.get("input")
+    if not isinstance(value, str):
+        value = payload.get("arguments")
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+            if isinstance(decoded, dict):
+                value = decoded.get("patch") or decoded.get("input") or value
+        except Exception:
+            pass
+    if not isinstance(value, str):
+        return []
+    return [os.path.normcase(os.path.normpath(p.strip())) for p in re.findall(
+        r"(?m)^\*\*\* (?:Update|Add|Delete) File:\s*(.+?)\s*$", value
+    ) if p.strip()]
+
+
+def _output_text(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "\n".join(item.get("text", "") for item in value
+                         if isinstance(item, dict) and isinstance(item.get("text"), str))
+    return ""
+
+
 def parse_turns(path):
     """rollout 파일 → (session_id, [turn,...]). turn = task_started~task_complete 구간."""
     session_id = None
@@ -208,7 +267,10 @@ def parse_turns(path):
                    "output_tokens": 0, "tool_calls": 0, "usage": {},
                    "code_files": 0, "code_lines": 0, "reasoning_tokens": 0,
                    "cost_usd": 0.0, "interrupted": False,
-                   "edit_events": 0, "cache_read": 0}
+                   "edit_events": 0, "cache_read": 0, "tool_failures": None,
+                   "_pending_calls": {}, "_result_states": {}, "_edited_files": set(),
+                   "_cell_calls": {},
+                   "check_status": {"test": "not_run", "build": "not_run", "lint": "not_run"}}
         elif cur is not None:
             if pt == "user_message":
                 msg = p.get("message") or p.get("text") or ""
@@ -239,13 +301,39 @@ def parse_turns(path):
                         cur["cache_read"] = lu.get("cached_input_tokens", cur["cache_read"]) or 0
                         cur["usage"] = lu
                 cur["model"] = model
-            elif t == "response_item" and pt and "call" in pt:
+            elif t == "response_item" and pt in ("function_call", "custom_tool_call"):
                 cur["tool_calls"] += 1
-                blob = json.dumps(p)  # apply_patch 편집 감지(근사)
-                if "apply_patch" in blob or "*** Update File" in blob or "*** Add File" in blob:
-                    cur["edit_events"] += 1
-                    cur["code_files"] += blob.count("*** Update File") + blob.count("*** Add File")
-                    cur["code_lines"] += blob.count("\\n+")
+                command = _call_command(p)
+                kinds = lm.classify_check_command(command)
+                for kind in kinds:
+                    cur["check_status"][kind] = None
+                call_id = p.get("call_id")
+                if call_id:
+                    args = _decode_arguments(p.get("arguments"))
+                    cell_id = args.get("cell_id") if str(p.get("name") or "").lower() == "wait" else None
+                    if cell_id is not None and str(cell_id) in cur["_cell_calls"]:
+                        kinds = cur["_pending_calls"].get(cur["_cell_calls"][str(cell_id)], {}).get("kinds", set())
+                        for kind in kinds:
+                            cur["check_status"][kind] = None
+                    cur["_pending_calls"][call_id] = {"kinds": kinds}
+                paths = _patch_paths(p)
+                if paths:
+                    cur["edit_events"] += len(paths)
+                    cur["_edited_files"].update(paths)
+                    value = p.get("input") or p.get("arguments") or ""
+                    cur["code_lines"] += str(value).count("\n+")
+            elif t == "response_item" and pt in ("function_call_output", "custom_tool_call_output"):
+                call_id = p.get("call_id")
+                pending = cur["_pending_calls"].get(call_id)
+                if pending is not None:
+                    output = p.get("output")
+                    status = lm.explicit_result_status(output)
+                    cur["_result_states"][call_id] = status
+                    cell_match = re.search(r"(?im)^\s*Script running with cell ID\s+([^\s]+)\s*$", _output_text(output))
+                    if cell_match:
+                        cur["_cell_calls"][cell_match.group(1)] = call_id
+                    for kind in pending["kinds"]:
+                        cur["check_status"][kind] = ("pass" if status else "fail") if status is not None else None
             elif pt == "task_complete":
                 cur["end"] = ts
                 cur["duration_ms"] = p.get("duration_ms") or _dur_ms(cur["start"], ts)
@@ -260,6 +348,16 @@ def parse_turns(path):
                     cur["usage"] = d
                     prev_total = lt
                 cur["cost_usd"] = round(lm.cost_codex(cur.get("usage") or {}, cur.get("model")), 6)
+                states = list(cur.pop("_result_states").values())
+                cur.pop("_pending_calls")
+                cur.pop("_cell_calls")
+                edited_files = cur.pop("_edited_files")
+                cur["code_files"] = len(edited_files)
+                cur["re_edits"] = max(0, cur["edit_events"] - cur["code_files"])
+                failures = sum(status is False for status in states)
+                cur["tool_failures"] = (failures if failures else
+                                        0 if cur["tool_calls"] == 0 or (states and all(status is True for status in states))
+                                        else None)
                 turns.append(cur)
                 cur = None
     return session_id, turns
@@ -332,6 +430,7 @@ def _run_locked():
                 "input_tokens": tn["input_tokens"],
                 "output_tokens": tn["output_tokens"],
                 "tool_calls": tn["tool_calls"],
+                "tool_failures": tn.get("tool_failures"),
                 "duration_ms": tn.get("duration_ms"),
                 "ttft_ms": tn.get("ttft_ms"),
                 "cost_usd": tn.get("cost_usd"),
@@ -345,7 +444,11 @@ def _run_locked():
                         "quality": {
                             "interrupted": tn.get("interrupted"),
                             "edit_events": tn.get("edit_events"),
+                            "re_edits": tn.get("re_edits"),
                             "cache_read": tn.get("cache_read"),
+                            "test_status": tn.get("check_status", {}).get("test"),
+                            "build_status": tn.get("check_status", {}).get("build"),
+                            "lint_status": tn.get("check_status", {}).get("lint"),
                         }},
             }
             lm.insert(env, row)

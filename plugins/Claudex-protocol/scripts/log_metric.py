@@ -7,6 +7,7 @@
 import glob
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -35,7 +36,7 @@ ENV_PATH = os.path.join(CONFIG_DIR, ".env")
 LOG_PATH = os.path.join(CONFIG_DIR, "metric.log")
 
 TABLE = "model_metrics"
-HOOK_VERSION = "0.3.22"
+HOOK_VERSION = "0.3.23"
 SCHEMA_VERSION = "2.0"
 PRICING_VERSION = "2026-07-11"
 
@@ -206,6 +207,7 @@ def blocks_text(content):
 
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit", "Update"}
+SHELL_TOOLS = {"Bash", "PowerShell", "Shell", "shell_command", "exec_command"}
 INTERRUPT_MARK = "[Request interrupted by user]"  # 사용자가 응답 중단 시 다음 user 항목에 삽입
 
 # 다음 턴이 직전 턴을 재작업/부정하는 신호(성과 self-report 교차검증). 원본 outcome은 보존.
@@ -238,6 +240,56 @@ def _code_metric(name, inp):
             s = ed.get("new_string", "") if isinstance(ed, dict) else ""
             lines += s.count("\n") + 1
     return path, lines
+
+
+def classify_check_command(command):
+    """Classify only recognizable executable invocations, never output/text mentions."""
+    if not isinstance(command, str) or not command.strip():
+        return set()
+    kinds = set()
+    segments = re.split(r"(?:\r?\n|&&|;|\|\|)", command)
+    for segment in segments:
+        s = segment.strip().lower()
+        s = re.sub(r"^(?:\$env:[\w]+\s*=\s*[^;]+;\s*)+", "", s)
+        if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test(?:\s|$)", s) or re.match(
+                r"^(?:pytest|python(?:\.exe)?\s+-m\s+(?:pytest|unittest)|cargo\s+test|go\s+test|dotnet\s+test|ctest|mvnw?(?:\.cmd)?\s+test|(?:gradle|gradlew)(?:\.bat)?\s+test)(?:\s|$)", s):
+            kinds.add("test")
+        if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?build(?:\s|$)", s) or re.match(
+                r"^(?:cargo\s+(?:build|check)|go\s+build|dotnet\s+build|mvnw?(?:\.cmd)?\s+package|(?:gradle|gradlew)(?:\.bat)?\s+build|msbuild|python(?:\.exe)?\s+-m\s+(?:py_compile|compileall))(?:\s|$)", s):
+            kinds.add("build")
+        if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?lint(?:\s|$)", s) or re.match(
+                r"^(?:eslint|flake8|pylint|golangci-lint|cargo\s+clippy|ruff\s+check)(?:\s|$)", s):
+            kinds.add("lint")
+    return kinds
+
+
+def explicit_result_status(value):
+    """Return True/False only for an unambiguous structured or exit-code result."""
+    if isinstance(value, dict):
+        if isinstance(value.get("is_error"), bool):
+            return not value["is_error"]
+        if isinstance(value.get("success"), bool):
+            return value["success"]
+        code = value.get("exit_code")
+        if isinstance(code, int) and not isinstance(code, bool):
+            return code == 0
+        status = value.get("status")
+        if isinstance(status, str) and status.lower() in ("failed", "error"):
+            return False
+        return None
+    if isinstance(value, list):
+        text = "\n".join(
+            item.get("text", "") for item in value
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        )
+    elif isinstance(value, str):
+        text = value
+    else:
+        return None
+    matches = re.findall(r"(?im)^\s*Exit code:\s*(-?\d+)\s*$", text)
+    if len(matches) != 1 or not re.search(r"(?im)^\s*Script (?:completed|failed)\s*$", text):
+        return None
+    return int(matches[0]) == 0
 
 
 def is_human_user(entry):
@@ -313,6 +365,8 @@ def parse_transcript(path):
     active_ms = 0         # 순수 모델 생성시간(직전 항목~assistant 간격 합; 도구/승인 대기 제외)
     prev_ts = user_ts
     usage_by_id = {}      # message.id별 최종 usage(분할/스트리밍 스냅샷 중복 → 마지막이 최종값). 루프 후 합산
+    pending_checks = {}
+    check_status = {"test": "not_run", "build": "not_run", "lint": "not_run"}
 
     for e in entries[ui + 1:]:
         ets = e.get("timestamp")
@@ -325,12 +379,18 @@ def parse_transcript(path):
             if INTERRUPT_MARK in s:
                 interrupted = True
             if isinstance(cc, list):
-                tool_failures += sum(
-                    1 for block in cc
-                    if isinstance(block, dict)
-                    and block.get("type") == "tool_result"
-                    and block.get("is_error") is True
-                )
+                for block in cc:
+                    if not isinstance(block, dict) or block.get("type") != "tool_result":
+                        continue
+                    if block.get("is_error") is True:
+                        tool_failures += 1
+                    call_id = block.get("tool_use_id")
+                    kinds = pending_checks.pop(call_id, set())
+                    if not kinds:
+                        continue
+                    status = explicit_result_status(block)
+                    for kind in kinds:
+                        check_status[kind] = ("pass" if status else "fail") if status is not None else None
             if ets:
                 prev_ts = ets  # tool_result 등도 다음 생성시간 기준점
             continue
@@ -354,9 +414,16 @@ def parse_transcript(path):
                     if b.get("type") == "tool_use":
                         tool_calls += 1
                         name = b.get("name")
+                        inp = b.get("input") or {}
+                        if name in SHELL_TOOLS and isinstance(inp, dict):
+                            kinds = classify_check_command(inp.get("command"))
+                            if kinds:
+                                for kind in kinds:
+                                    check_status[kind] = None
+                                pending_checks[b.get("id")] = kinds
                         if name in EDIT_TOOLS:
                             edit_events += 1
-                        f, ln = _code_metric(name, b.get("input") or {})
+                        f, ln = _code_metric(name, inp)
                         if f:
                             edited_files.add(f)
                         code_lines += ln
@@ -410,6 +477,9 @@ def parse_transcript(path):
         "cache_read": cache_read,
         "cache_write": cache_write,
         "active_ms": active_ms,
+        "test_status": check_status["test"],
+        "build_status": check_status["build"],
+        "lint_status": check_status["lint"],
     }
 
 
@@ -786,6 +856,9 @@ def run_worker(tmp):
                     "cache_read": data.get("cache_read"),
                     "cache_write": data.get("cache_write"),
                     "active_ms": data.get("active_ms"),
+                    "test_status": data.get("test_status"),
+                    "build_status": data.get("build_status"),
+                    "lint_status": data.get("lint_status"),
                 }},
     }
     insert(env, row)
