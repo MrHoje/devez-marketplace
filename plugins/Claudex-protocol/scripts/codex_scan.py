@@ -161,6 +161,8 @@ def parse_turns(path):
     model = None
     effort = None
     cwd = None
+    approval_mode = None
+    sandbox_mode = None
     turns = []
     cur = None
     prev_total = {}  # 직전 turn까지의 total_token_usage 누적(델타 계산 기준점)
@@ -184,6 +186,12 @@ def parse_turns(path):
             model = p.get("model", model)
             effort = lm.normalize_effort(p.get("effort")) or effort
             cwd = p.get("cwd", cwd)
+            approval_mode = p.get("approval_policy", approval_mode)
+            sandbox = p.get("sandbox_policy")
+            if isinstance(sandbox, dict):
+                sandbox = sandbox.get("type") or sandbox.get("mode")
+            if isinstance(sandbox, str):
+                sandbox_mode = sandbox
             # Newer Codex rollouts can emit task_started before turn_context.
             # Keep the active turn synchronized instead of retaining None or
             # the preceding turn's model/effort values.
@@ -191,8 +199,11 @@ def parse_turns(path):
                 cur["model"] = model
                 cur["effort"] = effort
                 cur["cwd"] = cwd
+                cur["approval_mode"] = approval_mode
+                cur["sandbox_mode"] = sandbox_mode
         elif pt == "task_started":
             cur = {"start": ts, "end": ts, "model": model, "effort": effort, "cwd": cwd,
+                   "approval_mode": approval_mode, "sandbox_mode": sandbox_mode,
                    "prompt": "", "response": "", "input_tokens": 0,
                    "output_tokens": 0, "tool_calls": 0, "usage": {},
                    "code_files": 0, "code_lines": 0, "reasoning_tokens": 0,
@@ -237,7 +248,8 @@ def parse_turns(path):
                     cur["code_lines"] += blob.count("\\n+")
             elif pt == "task_complete":
                 cur["end"] = ts
-                cur["duration_ms"] = _dur_ms(cur["start"], ts)
+                cur["duration_ms"] = p.get("duration_ms") or _dur_ms(cur["start"], ts)
+                cur["ttft_ms"] = p.get("time_to_first_token_ms")
                 lt = cur.pop("_last_total", None)
                 if lt:  # total 누적 → turn 델타로 환산(claude와 동일 기준)
                     d = _delta_usage(lt, prev_total)
@@ -321,10 +333,13 @@ def _run_locked():
                 "output_tokens": tn["output_tokens"],
                 "tool_calls": tn["tool_calls"],
                 "duration_ms": tn.get("duration_ms"),
+                "ttft_ms": tn.get("ttft_ms"),
                 "cost_usd": tn.get("cost_usd"),
                 "code_files": tn.get("code_files"),
                 "code_lines": tn.get("code_lines"),
                 "reasoning_tokens": tn.get("reasoning_tokens"),
+                "approval_mode": tn.get("approval_mode"),
+                "sandbox_mode": tn.get("sandbox_mode"),
                 "outcome_signal": signal,
                 "raw": {"reason": cls["reason"], "usage": tn.get("usage"), "turn": i,
                         "quality": {

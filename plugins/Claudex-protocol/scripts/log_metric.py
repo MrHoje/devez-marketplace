@@ -35,7 +35,7 @@ ENV_PATH = os.path.join(CONFIG_DIR, ".env")
 LOG_PATH = os.path.join(CONFIG_DIR, "metric.log")
 
 TABLE = "model_metrics"
-HOOK_VERSION = "0.3.21"
+HOOK_VERSION = "0.3.22"
 SCHEMA_VERSION = "2.0"
 PRICING_VERSION = "2026-07-11"
 
@@ -297,8 +297,10 @@ def parse_transcript(path):
     input_tokens = 0
     output_tokens = 0
     tool_calls = 0
+    tool_failures = 0
     resp_text_parts = []
     last_ts = user_ts
+    first_assistant_ts = None
     usage_raw = {}
     cost_usd = 0.0
     edited_files = set()
@@ -322,6 +324,13 @@ def parse_transcript(path):
                 if isinstance(cc, list) else "")
             if INTERRUPT_MARK in s:
                 interrupted = True
+            if isinstance(cc, list):
+                tool_failures += sum(
+                    1 for block in cc
+                    if isinstance(block, dict)
+                    and block.get("type") == "tool_result"
+                    and block.get("is_error") is True
+                )
             if ets:
                 prev_ts = ets  # tool_result 등도 다음 생성시간 기준점
             continue
@@ -330,6 +339,8 @@ def parse_transcript(path):
                 prev_ts = ets
             continue
         msg = e.get("message", {})
+        if first_assistant_ts is None and ets:
+            first_assistant_ts = ets
         model = msg.get("model", model)
         mid = msg.get("id")
         usage = msg.get("usage", {}) or {}
@@ -383,7 +394,9 @@ def parse_transcript(path):
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "tool_calls": tool_calls,
+        "tool_failures": tool_failures,
         "duration_ms": duration_ms,
+        "ttft_ms": _ms_between(user_ts, first_assistant_ts),
         "usage_raw": usage_raw,
         "cost_usd": round(cost_usd, 6),
         "code_files": len(edited_files),
@@ -753,11 +766,15 @@ def run_worker(tmp):
         "input_tokens": data["input_tokens"],
         "output_tokens": data["output_tokens"],
         "tool_calls": data["tool_calls"],
+        "tool_failures": data.get("tool_failures"),
         "duration_ms": data["duration_ms"],
+        "ttft_ms": data.get("ttft_ms"),
         "cost_usd": data.get("cost_usd"),
         "code_files": data.get("code_files"),
         "code_lines": data.get("code_lines"),
         "reasoning_tokens": data.get("reasoning_tokens"),
+        "approval_mode": hook.get("permission_mode") or hook.get("approval_mode"),
+        "sandbox_mode": hook.get("sandbox_mode"),
         "outcome_signal": ("interrupted" if data.get("interrupted") else None),  # reworked는 다음 턴 소급
         "raw": {"reason": cls.get("reason"), "usage": data["usage_raw"], "user_ts": data.get("user_ts"),
                 "subagents": sub["breakdown"], "subagent_input_tokens": sub["input_tokens"],
