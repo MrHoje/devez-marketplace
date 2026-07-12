@@ -36,7 +36,7 @@ ENV_PATH = os.path.join(CONFIG_DIR, ".env")
 LOG_PATH = os.path.join(CONFIG_DIR, "metric.log")
 
 TABLE = "model_metrics"
-HOOK_VERSION = "0.3.23"
+HOOK_VERSION = "0.3.24"
 SCHEMA_VERSION = "2.0"
 PRICING_VERSION = "2026-07-11"
 
@@ -246,20 +246,25 @@ def classify_check_command(command):
     """Classify only recognizable executable invocations, never output/text mentions."""
     if not isinstance(command, str) or not command.strip():
         return set()
+    segments = [s.strip().lower() for s in re.split(r"(?:\r?\n|&&|;|\|\|)", command) if s.strip()]
+    executable = [s for s in segments if not re.match(
+        r"^(?:\$erroractionpreference\s*=|\$env:[\w]+\s*=|export\s+[\w]+=|set-location(?:\s|$)|cd(?:\s|$))", s
+    )]
+    # One shell envelope exposes one final exit code. Multiple executable segments
+    # make attribution ambiguous (for example, `pytest; echo ok`).
+    if len(executable) != 1:
+        return set()
+    s = executable[0]
     kinds = set()
-    segments = re.split(r"(?:\r?\n|&&|;|\|\|)", command)
-    for segment in segments:
-        s = segment.strip().lower()
-        s = re.sub(r"^(?:\$env:[\w]+\s*=\s*[^;]+;\s*)+", "", s)
-        if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test(?:\s|$)", s) or re.match(
-                r"^(?:pytest|python(?:\.exe)?\s+-m\s+(?:pytest|unittest)|cargo\s+test|go\s+test|dotnet\s+test|ctest|mvnw?(?:\.cmd)?\s+test|(?:gradle|gradlew)(?:\.bat)?\s+test)(?:\s|$)", s):
-            kinds.add("test")
-        if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?build(?:\s|$)", s) or re.match(
-                r"^(?:cargo\s+(?:build|check)|go\s+build|dotnet\s+build|mvnw?(?:\.cmd)?\s+package|(?:gradle|gradlew)(?:\.bat)?\s+build|msbuild|python(?:\.exe)?\s+-m\s+(?:py_compile|compileall))(?:\s|$)", s):
-            kinds.add("build")
-        if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?lint(?:\s|$)", s) or re.match(
-                r"^(?:eslint|flake8|pylint|golangci-lint|cargo\s+clippy|ruff\s+check)(?:\s|$)", s):
-            kinds.add("lint")
+    if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?test(?:\s|$)", s) or re.match(
+            r"^(?:pytest|python(?:\.exe)?\s+-m\s+(?:pytest|unittest)|cargo\s+test|go\s+test|dotnet\s+test|ctest|mvnw?(?:\.cmd)?\s+test|(?:gradle|gradlew)(?:\.bat)?\s+test)(?:\s|$)", s):
+        kinds.add("test")
+    if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?build(?:\s|$)", s) or re.match(
+            r"^(?:cargo\s+(?:build|check)|go\s+build|dotnet\s+build|mvnw?(?:\.cmd)?\s+package|(?:gradle|gradlew)(?:\.bat)?\s+build|msbuild|python(?:\.exe)?\s+-m\s+(?:py_compile|compileall))(?:\s|$)", s):
+        kinds.add("build")
+    if re.match(r"^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?lint(?:\s|$)", s) or re.match(
+            r"^(?:eslint|flake8|pylint|golangci-lint|cargo\s+clippy|ruff\s+check)(?:\s|$)", s):
+        kinds.add("lint")
     return kinds
 
 
