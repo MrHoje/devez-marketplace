@@ -1,6 +1,6 @@
 ---
 name: hoje-plan
-description: Consensus planning entrypoint that auto-gates vague team/ultragoal requests before execution
+description: 모호한 team/ultragoal 요청을 실행 전에 자동 차단하는 합의 플래닝 진입점
 argument-hint: "[--interactive] [--deliberate] [--architect openai-code] [--critic openai-code] <task description>"
 level: 4
 

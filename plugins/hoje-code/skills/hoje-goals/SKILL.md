@@ -1,6 +1,6 @@
 ---
 name: hoje-goals
-description: Create and execute durable repo-native multi-goal plans over GJC goal mode artifacts.
+description: Hoje-Code goal 모드 아티팩트 위에서 내구성 있는 멀티 골 계획을 생성·실행
 
 source: "forked from upstream ultragoal skill and rebranded for GJC"
 ---

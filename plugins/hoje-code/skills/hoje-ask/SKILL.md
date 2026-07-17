@@ -1,6 +1,6 @@
 ---
 name: hoje-ask
-description: Socratic deep interview with mathematical ambiguity gating before explicit execution approval
+description: 명시적 실행 승인 전, 수학적 모호성 게이트를 적용하는 소크라테스식 심층 인터뷰
 argument-hint: "[--trace] [--quick|--standard|--deep] <idea or vague description>"
 pipeline: [deep-interview, ralplan]
 handoff-policy: approval-required
