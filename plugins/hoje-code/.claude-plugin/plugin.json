@@ -1,0 +1,17 @@
+{
+  "name": "hoje-code",
+  "version": "0.11.3",
+  "description": "Claude Code-native entrypoints for Gajae-Code deep interview, consensus planning, and durable goal execution workflows.",
+  "author": {
+    "name": "MrHoje"
+  },
+  "homepage": "https://github.com/MrHoje/devez-marketplace",
+  "repository": "https://github.com/MrHoje/devez-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "planning",
+    "goals",
+    "gajae-code"
+  ]
+}

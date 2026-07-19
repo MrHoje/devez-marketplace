@@ -1,27 +1,40 @@
 ---
 name: hoje-goals
-description: Hoje-Code goal 모드 아티팩트 위에서 내구성 있는 멀티 골 계획을 생성·실행
+description: Create and execute durable repo-native multi-goal plans over GJC goal mode artifacts.
+disable-model-invocation: true
 
 source: "forked from upstream ultragoal skill and rebranded for GJC"
 ---
 
+## Hoje-Code Claude compatibility
+
+These rules override conflicting GJC-harness transport instructions below:
+
+- Run backend workflow commands through `hoje`. The bundled launcher selects the pinned Gajae-Code runtime and supplies the current Claude session id.
+- Keep GJC runtime state and configuration names unchanged: `.gjc/`, `GJC_SESSION_ID`, `GJC_CONFIG_DIR`, `GJC_CODING_AGENT_DIR`, and JSON key `gjc` are backend contracts.
+- Use Claude Code's `AskUserQuestion` for upstream question operations. Never pass GJC-only `deepInterview` or `workflowGate` metadata to that tool; persist required answer, scoring, and approval state through the documented `hoje state ...` legacy path.
+- Use Claude Code's Agent tool for upstream subagent operations and its resume handle when continuity is required.
+- Use Claude Code tasks as the inline UX bridge: create one aggregate task, keep it `in_progress` during intermediate story checkpoints, and mark it `completed` only after the final durable receipt. Durable `goals.json` and `ledger.jsonl` remain authoritative.
+- Invoke internal helpers through their namespaced Hoje-Code skills. They are hidden from the user command menu but remain model-invocable.
+
+
 # Ultragoal Workflow
 
-Use when the user asks for `ultragoal`, `create-goals`, `complete-goals`, durable multi-goal planning, or sequential execution over Hoje-Code goal mode.
+Use when the user asks for `ultragoal`, `create-goals`, `complete-goals`, durable multi-goal planning, or sequential execution over GJC goal mode.
 
 ## Purpose
 
-`ultragoal` turns a brief into repo-native durable artifacts and then drives execution through the unified `goal` tool as a UX bridge only. `goals.json` is the canonical source of goal identity and state; `ledger.jsonl` is the canonical proof stream for checkpoints, receipts, blockers, steering, and reviews. The inline `goal` tool and goal-mode-request create-bridge exist only to keep the agent's interactive loop focused on the current aggregate or story objective. Completion is verified purely from durable `goals.json` plus fresh `ledger.jsonl` receipts, never from inline goal state. The agent, not the CLI or hooks, calls `goal({"op":"complete"})` or `goal({"op":"drop"})` after durable run completion or cleanup; CLI commands and hooks never mutate goal state.
+`ultragoal` turns a brief into repo-native durable artifacts and then drives execution through the unified `goal` tool as a UX bridge only. `goals.json` is the canonical source of goal identity and state; `ledger.jsonl` is the canonical proof stream for checkpoints, receipts, blockers, steering, and reviews. The inline `goal` tool and goal-mode-request create-bridge exist only to keep the agent's interactive loop focused on the current aggregate or story objective. Completion is verified purely from durable `goals.json` plus fresh `ledger.jsonl` receipts, never from inline Claude task state. The agent, not the CLI or hooks, calls `TaskUpdate(status=completed)` or `TaskUpdate(status=completed, description=superseded)` after durable run completion or cleanup; CLI commands and hooks never mutate goal state.
 
-- `.hoje/_session-{sessionid}/ultragoal/brief.md`
-- `.hoje/_session-{sessionid}/ultragoal/goals.json`
-- `.hoje/_session-{sessionid}/ultragoal/ledger.jsonl` (checkpoint and structured steering audit events)
+- `.gjc/_session-{sessionid}/ultragoal/brief.md`
+- `.gjc/_session-{sessionid}/ultragoal/goals.json`
+- `.gjc/_session-{sessionid}/ultragoal/ledger.jsonl` (checkpoint and structured steering audit events)
 
 Existing aggregate plans with the legacy enumerated objective are migrated to the stable pointer objective on read, persisted to `goals.json`, retained in `gjcObjectiveAliases` for already-active hidden goal reconciliation, and audited with an `aggregate_objective_migrated` ledger entry.
 
 ## Corrupt current-session state recovery
 
-When ultragoal detects its own current-session state is corrupt, tampered, unreadable, or stale on resume, run `hoje state clear --force --mode ultragoal` before reseeding or restarting. Scope the clear to the current session via `--session-id`, the command payload, or `Hoje-Code_SESSION_ID`; it clears only ultragoal state for that session and never clears other skills or sessions.
+When ultragoal detects its own current-session state is corrupt, tampered, unreadable, or stale on resume, run `hoje state clear --force --mode ultragoal` before reseeding or restarting. Scope the clear to the current session via `--session-id`, the command payload, or `GJC_SESSION_ID`; it clears only ultragoal state for that session and never clears other skills or sessions.
 
 ## Always-used command examples
 
@@ -39,14 +52,14 @@ hoje ultragoal checkpoint --goal-id <id> --status failed --evidence "<blocker/ev
 hoje ultragoal record-review-blockers --goal-id <id> --title "Resolve final review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>"
 ```
 
-Use these exact goal-tool calls for the inline goal state:
+Use these exact goal-tool calls for the inline Claude task state:
 
 ```json
-goal({"op":"get"})
-goal({"op":"create","objective":"<printed aggregate or per-story objective>"})
-goal({"op":"complete"})
-goal({"op":"drop"})
-goal({"op":"resume"})
+TaskList
+TaskCreate(subject=<printed objective>, status=in_progress)
+TaskUpdate(status=completed)
+TaskUpdate(status=completed, description=superseded)
+TaskUpdate(status=in_progress)
 ```
 `drop` clears the active goal without exiting goal mode; `resume` reactivates a paused goal.
 
@@ -84,8 +97,8 @@ Durable completion is single-source: `goals.json` defines which goals exist and 
    - `hoje ultragoal create-goals --brief "<brief>"`
    - `hoje ultragoal create-goals --brief-file <path>`
    - `cat <brief> | hoje ultragoal create-goals --from-stdin`
-   - `hoje ultragoal create-goals --gjc-goal-mode per-story --brief "<brief>"` only when one Hoje-Code goal context per story is explicitly preferred
-3. Inspect `.hoje/_session-{sessionid}/ultragoal/goals.json` and refine if needed.
+   - `hoje ultragoal create-goals --gjc-goal-mode per-story --brief "<brief>"` only when one GJC goal context per story is explicitly preferred
+3. Inspect `.gjc/_session-{sessionid}/ultragoal/goals.json` and refine if needed.
 
 ### Create-goals granularity: merge validation-coupled stories
 
@@ -104,18 +117,18 @@ Loop until `hoje ultragoal status` reports all goals complete:
 
 1. Run `hoje ultragoal complete-goals`.
 2. Read the printed handoff.
-3. Call `goal({"op":"get"})`.
-4. If no active Hoje-Code goal exists, call `goal({"op":"create","objective":"<printed payload objective>"})` with the printed payload. In aggregate mode, if the same aggregate objective is already active, continue the current Hoje-Code story without creating a new Hoje-Code goal. If `goal({"op":"get"})` shows a stale dropped goal (status `"dropped"`) and a new aggregate must start, no extra cleanup is needed — `goal({"op":"create"})` succeeds directly. If a previous aggregate is still active and you genuinely need a fresh start in the same session, call `goal({"op":"drop"})` first, then `goal({"op":"create"})`.
-5. Complete the current Hoje-Code story only.
+3. Call `TaskList` and locate the aggregate task for this run.
+4. If it does not exist, create it with `TaskCreate(subject=<printed payload objective>)` and mark it `in_progress`. Reuse the same task for every intermediate story. If a different stale aggregate task exists, mark it completed as superseded before creating the new aggregate task.
+5. Complete the current GJC story only.
 6. Run a completion audit against the story objective and real artifacts/tests.
-7. Before any `--status complete` checkpoint, run the mandatory final cleanup/review gate below. In aggregate mode, do **not** call `goal({"op":"complete"})` for intermediate stories; checkpoint each story while the aggregate objective is still `active`. On the final story, create the final aggregate receipt first; only after that receipt exists may `goal({"op":"complete"})` run.
+7. Before any `--status complete` checkpoint, run the mandatory final cleanup/review gate below. In aggregate mode, do **not** call `TaskUpdate(status=completed)` for intermediate stories; checkpoint each story while the aggregate objective is still `active`. On the final story, create the final aggregate receipt first; only after that receipt exists may `TaskUpdate(status=completed)` run.
 8. Checkpoint the durable ledger. Complete checkpoints require `--quality-gate-json` only:
    `hoje ultragoal checkpoint --goal-id <id> --status complete --evidence "<evidence>" --quality-gate-json <quality-gate-json-or-path>`
-   A successful complete checkpoint is story completion, not automatic run completion. Read the checkpoint output: when it prints `Next ultragoal goal: <id>`, continue that active story under the same aggregate Hoje-Code goal; when it prints `All ultragoal goals are complete`, the durable run is terminal. `hoje ultragoal complete-goals` remains the supported manual next-story command if continuation output was missed.
+   A successful complete checkpoint is story completion, not automatic run completion. Read the checkpoint output: when it prints `Next ultragoal goal: <id>`, continue that active story under the same aggregate GJC goal; when it prints `All ultragoal goals are complete`, the durable run is terminal. `hoje ultragoal complete-goals` remains the supported manual next-story command if continuation output was missed.
 9. If blocked or failed, checkpoint failure:
    `hoje ultragoal checkpoint --goal-id <id> --status failed --evidence "<blocker/evidence>"`
 10. For legacy per-story completed-goal blockers, preserve the non-terminal blocker with:
-   `hoje ultragoal checkpoint --goal-id <id> --status blocked --evidence "<completed legacy Hoje-Code goal blocks goal create in this thread>"`
+   `hoje ultragoal checkpoint --goal-id <id> --status blocked --evidence "<completed legacy GJC goal blocks goal create in this thread>"`
 11. Resume failed goals with `hoje ultragoal complete-goals --retry-failed`.
 
 ## Blocker triage and pause discipline
@@ -125,13 +138,13 @@ An active Ultragoal run must not give up on a blocker by pausing the goal and as
 - **`resolvable`** — anything the agent can act on: failing tests, missing implementation, a dependency to install, an ambiguous-but-inferable detail, investigation. **Never pause.** Exhaust autonomous resolution first: investigate, `hoje ultragoal steer --kind add_subgoal --title "Investigate blocker" --objective "..." --evidence "..." --rationale "..."`, delegate an `executor`, or preserve the blocker durably with `hoje ultragoal checkpoint --status blocked` / `hoje ultragoal record-review-blockers` and keep scheduling the next goal.
 - **`human_blocked`** — only the user can act: credentials/secrets, a manual or physical step, an external approval/decision, access the agent lacks. Pause is the last resort and is gated.
 
-`goal({"op":"pause"})` is **blocked at runtime** while an Ultragoal run is active unless the latest durable ledger event classifies the current blocker as `human_blocked`. To pause, record the classification immediately before pausing and cite the human-only dependency as evidence:
+`TaskUpdate(status=pending)` is **blocked at runtime** while an Ultragoal run is active unless the latest durable ledger event classifies the current blocker as `human_blocked`. To pause, record the classification immediately before pausing and cite the human-only dependency as evidence:
 
 ```sh
 hoje ultragoal classify-blocker --classification human_blocked --evidence "<the specific human-only dependency>" [--goal-id <id>]
 ```
 
-Recording `--classification resolvable` is an audit note only; it never authorizes a pause. The `ask` tool stays blocked during active runs regardless of classification — record unresolved decisions as durable blockers instead of prompting.
+Recording `--classification resolvable` is an audit note only; it never authorizes a pause. The `AskUserQuestion` tool stays blocked during active runs regardless of classification — record unresolved decisions as durable blockers instead of prompting.
 
 ## Dynamic steering
 
@@ -161,9 +174,9 @@ hoje ultragoal steer --kind mark_blocked_superseded --goal-id G004 --evidence "T
 
 Steering invariants:
 
-- Do not edit the aggregate goal objective, original brief constraints, quality gates, or completion status. The aggregate objective is a stable pointer to `.hoje/_session-{sessionid}/ultragoal/goals.json` and `.hoje/_session-{sessionid}/ultragoal/ledger.jsonl`, not an enumeration of initial goal ids.
-- Do not hard-delete goals, auto-complete work, weaken verification, or silently mutate `.hoje/_session-{sessionid}/ultragoal`.
-- Accepted and rejected attempts append structured audit entries to `.hoje/_session-{sessionid}/ultragoal/ledger.jsonl`.
+- Do not edit the aggregate goal objective, original brief constraints, quality gates, or completion status. The aggregate objective is a stable pointer to `.gjc/_session-{sessionid}/ultragoal/goals.json` and `.gjc/_session-{sessionid}/ultragoal/ledger.jsonl`, not an enumeration of initial goal ids.
+- Do not hard-delete goals, auto-complete work, weaken verification, or silently mutate `.gjc/_session-{sessionid}/ultragoal`.
+- Accepted and rejected attempts append structured audit entries to `.gjc/_session-{sessionid}/ultragoal/ledger.jsonl`.
 - Superseded goals remain in `goals.json` with steering metadata and are skipped for scheduling.
 - Blocked goals without replacements are skipped for scheduling but still block final completion until later explicit steering replaces or supersedes them.
 
@@ -171,7 +184,7 @@ UserPromptSubmit structured steering directives are a planned/deferred routing s
 
 ## Role-agent delegation guidance
 
-Ultragoal execution should use Hoje-Code's bundled role-agent roster when a durable story is large enough to benefit from delegation:
+Ultragoal execution should use GJC's bundled role-agent roster when a durable story is large enough to benefit from delegation:
 
 - Use `executor` for bounded implementation, refactoring, and fix slices.
 - Use `planner` for story sequencing or handoff refinement when execution uncovers a missing plan branch.
@@ -195,13 +208,13 @@ Forced-delegation rules:
 - Prefer **parallel** `executor` subagents for independent slices; sequence only slices with a real dependency.
 - If a big-scope story cannot be cleanly split, record the reason as a durable ledger note and delegate the whole implementation to a single `executor` rather than doing it inline; the leader still owns verification.
 - Small, atomic, single-file changes below these thresholds stay with the leader — do not over-delegate trivial work.
-- After integrating delegated slices, run `architect` / `critic` review lanes; worker agents never mutate `.hoje/_session-{sessionid}/ultragoal` or call goal tools.
+- After integrating delegated slices, run `architect` / `critic` review lanes; worker agents never mutate `.gjc/_session-{sessionid}/ultragoal` or call goal tools.
 
 When delegating with native subagents, an await timeout only limits the leader's wait. It is not subagent failure evidence and must not be used as a cancellation reason; inspect or continue independent work, and cancel only when the subagent has actually failed, gone off-track, or become unrecoverably wrong.
 
 If an Ultragoal request has no approved plan or consensus artifact, run `ralplan` first and preserve its PRD, test spec, role roster, and verification guidance in the Ultragoal ledger. Do not silently substitute ad-hoc execution for missing planning.
 
-The Ultragoal leader owns `.hoje/_session-{sessionid}/ultragoal/goals.json` and `.hoje/_session-{sessionid}/ultragoal/ledger.jsonl`. Role agents return implementation/review evidence; they do not checkpoint Ultragoal or mutate goal state.
+The Ultragoal leader owns `.gjc/_session-{sessionid}/ultragoal/goals.json` and `.gjc/_session-{sessionid}/ultragoal/ledger.jsonl`. Role agents return implementation/review evidence; they do not checkpoint Ultragoal or mutate goal state.
 
 ### Native executor parallelism contract
 
@@ -209,7 +222,7 @@ Native subagent parallelism is a contract for bounded `executor` delegation, not
 
 - **MUST use native `executor` parallelism** when a story meets the big-scope delegation threshold above and decomposes into independent implementation slices that can be bounded by per-slice coordination contracts.
 - **SHOULD prefer parallel `executor` subagents** for independent files/surfaces, and sequence only real dependencies, unsafe shared-file overlap, sub-threshold trivial work, or work that lacks a safe contract.
-- Worker agents **MUST NOT mutate `.hoje/_session-{sessionid}/ultragoal`**, call goal tools, make checkpoint decisions, own integration, or own final verification. The Ultragoal leader keeps those responsibilities.
+- Worker agents **MUST NOT mutate `.gjc/_session-{sessionid}/ultragoal`**, call goal tools, make checkpoint decisions, own integration, or own final verification. The Ultragoal leader keeps those responsibilities.
 
 Before workers start, each per-slice coordination contract MUST name the target files/surfaces, independence assumptions, allowed coordination channel, conflict-escalation rule, expected evidence, and terminal status. Conflict or assignment changes remain leader-owned and must be auditable through durable ledger evidence.
 
@@ -221,7 +234,7 @@ Sequential execution remains the default. Ultragoal may use runtime-backed pipel
 
 Pipeline metadata is explicit-only: create eligible goals with `hoje ultragoal create-goals --goal-metadata-json '<json>'` or the equivalent runtime `createUltragoalPlan({ goalMetadata })` input. Brief-only or missing metadata remains valid but non-eligible and falls back to ordinary sequential scheduling. The initial pipeline contract is **aggregate mode only**; per-story mode remains sequential until a separate UX/state contract exists.
 
-The full lifecycle commands (`start-pipeline-overlap`, `join-pipeline-overlap`, `rebaseline-pipeline-overlap`) and the fail-closed overlap rules — at most one eligible next goal per join window, G(N) remains active until a clean join, quarantine and re-baseline on dirty joins or lost handles, complete checkpoints fail closed on open overlaps or unattributable change-set paths — are specified in the internal `pipeline-validation-contracts` fragment (`skill-fragments/ultragoal/pipeline-validation-contracts.md`). Load that fragment before operating an overlap; the runtime enforces its rules verbatim.
+The full lifecycle commands (`start-pipeline-overlap`, `join-pipeline-overlap`, `rebaseline-pipeline-overlap`) and the fail-closed overlap rules — at most one eligible next goal per join window, G(N) remains active until a clean join, quarantine and re-baseline on dirty joins or lost handles, complete checkpoints fail closed on open overlaps or unattributable change-set paths — are specified in the internal `/hoje-code:hoje-goals-pipeline-validation` internal skill (`/hoje-code:hoje-goals-pipeline-validation`). Load that fragment before operating an overlap; the runtime enforces its rules verbatim.
 
 Team remains explicit and separate: Team is not auto-launched, not a hidden pipeline scheduler, and never owns Ultragoal goals, checkpoints, or ledger state.
 
@@ -237,7 +250,7 @@ Create a batch explicitly:
 hoje ultragoal create-goals --brief-file <path> --validation-batch-json '[{"schemaVersion":1,"batchId":"VB001","memberIds":["G001","G002","G003"],"finalGoalId":"G003"}]'
 ```
 
-Checkpoint contract summary — the full contract lives in the `pipeline-validation-contracts` fragment (`skill-fragments/ultragoal/pipeline-validation-contracts.md`); load it before checkpointing any batch member:
+Checkpoint contract summary — the full contract lives in the `/hoje-code:hoje-goals-pipeline-validation` internal skill (`/hoje-code:hoje-goals-pipeline-validation`); load it before checkpointing any batch member:
 
 - **Non-final members** checkpoint `complete` with a single top-level `deferredToBatch` quality gate (kind `validation-batch-deferred`) proving targeted verification, an ai-slop-cleaner pass, a rerun iteration, and a cumulative-since-base change set — never `architectReview`, `executorQa`, or `validationBatchClose`; deferring never manufactures fake review approvals.
 - **The final member** (`finalGoalId`) checkpoints `complete` with the normal full strict gate PLUS a top-level `validationBatchClose` proof covering all members; out-of-order close is rejected, close state is append-only proof on the final member only, and batch invalidation is fail-closed.
@@ -248,22 +261,22 @@ Within a single goal (including a single-goal run or one validation-batch member
 
 ## Use Ultragoal and Team together
 
-Use ultragoal and team together for a durable Ultragoal story that benefits from one visible tmux worker session. Ultragoal remains leader-owned: `.hoje/_session-{sessionid}/ultragoal/goals.json` stores the story plan and `.hoje/_session-{sessionid}/ultragoal/ledger.jsonl` stores checkpoints. Team is the single-worker tmux execution engine and returns task/evidence status to the leader.
+Use ultragoal and team together for a durable Ultragoal story that benefits from one visible tmux worker session. Ultragoal remains leader-owned: `.gjc/_session-{sessionid}/ultragoal/goals.json` stores the story plan and `.gjc/_session-{sessionid}/ultragoal/ledger.jsonl` stores checkpoints. Team is the single-worker tmux execution engine and returns task/evidence status to the leader.
 
-The leader checkpoints Ultragoal from Team evidence plus the current-session Hoje-Code goal snapshot; durable state remains leader-owned in `goals.json` and `ledger.jsonl`:
+The leader checkpoints Ultragoal from Team evidence plus the current-session GJC goal snapshot; durable state remains leader-owned in `goals.json` and `ledger.jsonl`:
 
 ```sh
-hoje ultragoal checkpoint --goal-id <id> --status complete --evidence "<team evidence mentioning .hoje/_session-{sessionid}/ultragoal and <id>>" --quality-gate-json <quality-gate-json-or-path>
+hoje ultragoal checkpoint --goal-id <id> --status complete --evidence "<team evidence mentioning .gjc/_session-{sessionid}/ultragoal and <id>>" --quality-gate-json <quality-gate-json-or-path>
 ```
 
 Workers do not own ultragoal goal state, do not create worker ultragoal ledgers, and do not checkpoint Ultragoal. Workers must not run `hoje ultragoal checkpoint`; checkpoint authority stays with the leader after worker tasks are terminal. Team launch remains explicit; Ultragoal does not auto-launch Team and performs no hidden goal mutation.
 
 ## Internal Ultragoal sub-skill fragments
 
-The completion-gate cleanup sweep is driven by `ai-slop-cleaner`, an internal Ultragoal sub-skill bundled as a `kind: "skill-fragment"` prompt with parent skill `ultragoal` (installed at `skill-fragments/ultragoal/ai-slop-cleaner.md`). It is analogous to deep-interview's auto-research fragment: loaded on demand for one specific hook, never a user-facing skill.
+The completion-gate cleanup sweep is driven by `/hoje-code:hoje-goals-slop-cleaner`, an internal Ultragoal skill bundled as an internal Hoje-Code plugin skill prompt with parent skill `ultragoal` (installed at `/hoje-code:hoje-goals-slop-cleaner`). It is analogous to deep-interview's auto-research fragment: loaded on demand for one specific hook, never a user-facing skill.
 
 - It is not slash-command discoverable, has no public skill-listing entry, and is never resolvable through `skill://`.
-- It is a read-only detector+reporter over the active story's changed files only: it never edits code, writes files, mutates `.hoje/`, checkpoints, calls goal tools, or spawns workflows.
+- It is a read-only detector+reporter over the active story's changed files only: it never edits code, writes files, mutates `.gjc/`, checkpoints, calls goal tools, or spawns workflows.
 - It classifies every finding as blocking or advisory across the full taxonomy (fallback-like masking vs. grounded, duplication, dead code, needless abstraction, boundary violations, UI/design slop, missing tests).
 - The leader and a leader-spawned `executor` own all fixes; the cleaner reruns until zero blocking findings remain. Advisory findings live in the gate report only.
 - Recursion guard: it must not spawn nested `ralplan`/`team`/`deep-interview`/`ultragoal`; broad or architectural findings are handed back to the leader as review blockers.
@@ -288,14 +301,14 @@ An ultragoal story cannot be checkpointed `complete` until the active agent has 
    - The mandatory **computer-use** red-team suite (`kill-switch-bypass`, `suspended-enforcement`, `permission-revoked`, …) is conditional, not universal: require it only when computer/desktop control is genuinely part of the product surface being dogfooded. For every other product type, prove the change through the matching live surface instead — browser-use automation for web/GUI, bash/CLI live invocation or argv replay for CLI, and real artifacts or typed receipts for API/package/algorithm/math. Editing docs, prompts, or skills that merely mention computer-use does not by itself make the computer-use suite applicable; pick the red-team surface that matches what the change actually ships.
 7. The executor QA/red-team lane must report a matrix using `executorQa.contractCoverage`, `executorQa.surfaceEvidence`, `executorQa.adversarialCases`, and `executorQa.artifactRefs`. Not-applicable rows are allowed only in `contractCoverage` and `surfaceEvidence`; each `status: "not_applicable"` row requires `contractRef` plus `reason`. `adversarialCases` rows cannot be not-applicable.
 8. Run a final code review pass and fold it into the strict quality gate. Clean means `architectReview.architectureStatus`, `architectReview.productStatus`, and `architectReview.codeStatus` are all `"CLEAR"`, `architectReview.recommendation` is `"APPROVE"`, executor QA statuses are `"passed"`, iteration is `"passed"` with `fullRerun: true`, every evidence field is non-empty, every required matrix row is present, and every blockers array is empty. `COMMENT`, `WATCH`, `REQUEST CHANGES`, `BLOCK`, missing evidence, missing or shallow matrix rows, plan/code mismatches, or non-empty blockers are non-clean.
-9. If any lane finds an issue, do **not** checkpoint `complete` and do **not** call `goal({"op":"complete"})`. Record durable blocker work instead:
+9. If any lane finds an issue, do **not** checkpoint `complete` and do **not** call `TaskUpdate(status=completed)`. Record durable blocker work instead:
    ```sh
    hoje ultragoal record-review-blockers --goal-id <id> --title "Resolve verification blockers" --objective "<blocker-resolution objective>" --evidence "<architect/executor findings>"
    ```
 10. Complete or steer through the blocker story, then rerun the full blocking verification loop. Repeat until all verifier lanes are clean.
-11. Only after the loop is clean, checkpoint the story as complete with a structured quality gate. The checkpoint creates a receipt in `ledger.jsonl`; `goals.json.status` alone is not proof. In aggregate mode, the final aggregate receipt must exist before the agent calls `goal({"op":"complete"})` to reconcile the inline UX goal state.
+11. Only after the loop is clean, checkpoint the story as complete with a structured quality gate. The checkpoint creates a receipt in `ledger.jsonl`; `goals.json.status` alone is not proof. In aggregate mode, the final aggregate receipt must exist before the agent calls `TaskUpdate(status=completed)` to reconcile the inline UX goal state.
 
-While an Ultragoal run is active, the `ask` tool is blocked for all agents. Record unresolved review decisions as durable blockers with `hoje ultragoal record-review-blockers` instead of prompting interactively.
+While an Ultragoal run is active, the `AskUserQuestion` tool is blocked for all agents. Record unresolved review decisions as durable blockers with `hoje ultragoal record-review-blockers` instead of prompting interactively.
 
 The native `checkpoint --status complete` command rejects missing or shallow gates. `--quality-gate-json` must include:
 
@@ -343,7 +356,7 @@ The native `checkpoint --status complete` command rejects missing or shallow gat
 
 Provide one `artifactRefs` entry per live surface actually exercised, using the surface-appropriate `kind` and evidence rules from steps 6–7 above; the CLI rejects missing or shallow gates. `status: "not_applicable"` rows are allowed only in `contractCoverage` and `surfaceEvidence` and each requires `contractRef` plus `reason`.
 
-For CLI replay artifacts, the JSON at `path` must be an object like `{"schemaVersion":1,"kind":"cli-replay","replaySafe":true,"command":["bun","-e","console.log(\"ultragoal-cli-ok\")"],"cwd":".","env":{"LC_ALL":"C"},"timeoutMs":30000,"expectedExitCode":0,"recordedStdout":"ultragoal-cli-ok\n","recordedStderr":"","invariants":[{"type":"substring","value":"ultragoal-cli-ok"},{"type":"not-substring","value":"error"}]}`. Accepted replay fields are `command` (string array), optional `cwd`, safe `env`, `timeoutMs`, `expectedExitCode`, `recordedStdout`, `recordedStderr`, `normalization`, and `invariants`. The conservative command allowlist is intentionally small: `bun --version`, `node --version`, deterministic `bun/node -e "console.log(...)"`, `npm|pnpm|yarn --version`, `npm|pnpm|yarn list`, read-only `git status|rev-parse|merge-base|diff|show|log` with safe args, and `hoje read|status`. `env` must contain only safe deterministic variables, never credentials or machine/user-specific secrets. `normalization` is optional and, when provided, must be exactly the string `"default"` (the built-in normalizer already strips ANSI codes, normalizes line endings, scrubs paths, and trims trailing whitespace); object-shaped normalization is rejected. Invariants may be substring, regex, or not-substring checks; when present, they replace exact `recordedStdout` equality — without `invariants`, replayed normalized stdout must match `recordedStdout` exactly. Unsafe, non-deterministic, credentialed, interactive, or otherwise unallowlisted commands require audited `replayExempt` metadata with exact fields `reasonCode`, `reason`, `approvedBy`, and `fallbackArtifactRefs` plus a structurally valid same-surface fallback artifact. `reason` must be substantive and audited, and `approvedBy` must identify the verifier. Allowed `reasonCode` values are exactly `unsafe_side_effect`, `requires_credentials`, `requires_network`, `non_deterministic_external`, `destructive`, `interactive_only`, and `platform_unavailable`.
+For CLI replay artifacts, the JSON at `path` must be an object like `{"schemaVersion":1,"kind":"cli-replay","replaySafe":true,"command":["bun","-e","console.log(\"ultragoal-cli-ok\")"],"cwd":".","env":{"LC_ALL":"C"},"timeoutMs":30000,"expectedExitCode":0,"recordedStdout":"ultragoal-cli-ok\n","recordedStderr":"","invariants":[{"type":"substring","value":"ultragoal-cli-ok"},{"type":"not-substring","value":"error"}]}`. Accepted replay fields are `command` (string array), optional `cwd`, safe `env`, `timeoutMs`, `expectedExitCode`, `recordedStdout`, `recordedStderr`, `normalization`, and `invariants`. The conservative command allowlist is intentionally small: `bun --version`, `node --version`, deterministic `bun/node -e "console.log(...)"`, `npm|pnpm|yarn --version`, `npm|pnpm|yarn list`, read-only `git status|rev-parse|merge-base|diff|show|log` with safe args, and `gjc read|status`. `env` must contain only safe deterministic variables, never credentials or machine/user-specific secrets. `normalization` is optional and, when provided, must be exactly the string `"default"` (the built-in normalizer already strips ANSI codes, normalizes line endings, scrubs paths, and trims trailing whitespace); object-shaped normalization is rejected. Invariants may be substring, regex, or not-substring checks; when present, they replace exact `recordedStdout` equality — without `invariants`, replayed normalized stdout must match `recordedStdout` exactly. Unsafe, non-deterministic, credentialed, interactive, or otherwise unallowlisted commands require audited `replayExempt` metadata with exact fields `reasonCode`, `reason`, `approvedBy`, and `fallbackArtifactRefs` plus a structurally valid same-surface fallback artifact. `reason` must be substantive and audited, and `approvedBy` must identify the verifier. Allowed `reasonCode` values are exactly `unsafe_side_effect`, `requires_credentials`, `requires_network`, `non_deterministic_external`, `destructive`, `interactive_only`, and `platform_unavailable`.
 
 ## Review mode
 
@@ -363,15 +376,14 @@ When the aggregate ultragoal is complete OR the user requests return to planning
 hoje state ultragoal write --input '{"current_phase":"handoff"}' --json
 ```
 
-The skill tool then dispatches `/skill:hoje-plan` or `/skill:hoje-ask` same-turn and runs `hoje state ultragoal handoff --to <ralplan|deep-interview> --json` in-process to atomically demote ultragoal, promote the callee, and sync both `.hoje/_session-{sessionid}/state/skill-active-state.json` files. You do not need to run the handoff verb yourself.
+The skill tool then dispatches `/hoje-code:hoje-plan` or `/hoje-code:hoje-ask` same-turn and runs `hoje state ultragoal handoff --to <ralplan|deep-interview> --json` in-process to atomically demote ultragoal, promote the callee, and sync both `.gjc/_session-{sessionid}/state/skill-active-state.json` files. You do not need to run the handoff verb yourself.
 
 ## Constraints
 
-- The shell command emits a model-facing handoff for the active Hoje-Code agent; it does not invoke any `/goal` slash-command and the agent loop must not depend on any `/goal` subcommand.
-- Use only the unified goal-tool surface from the agent loop: `goal({"op":"get"})`, `goal({"op":"create"})`, `goal({"op":"complete"})`, `goal({"op":"drop"})`, `goal({"op":"resume"})`. `drop` clears the active goal without exiting goal mode so the next `goal({"op":"create"})` works in-session. No slash-command cleanup exists or is required; Ultragoal never calls any `/goal` subcommand.
-- For back-to-back ultragoal runs in the same session/thread, when `goal({"op":"get"})` still reports an active aggregate, call `goal({"op":"drop"})` before `goal({"op":"create"})`; when no active goal exists or the prior aggregate is already complete or dropped, call `goal({"op":"create"})` directly. The goal tool remains callable across drop; no slash-command cleanup exists or is required.
-- Never call `goal({"op":"create"})` when `goal({"op":"get"})` reports a different active goal.
-- Never call `goal({"op":"complete"})` unless the aggregate run or legacy per-story goal is actually complete.
-- In aggregate mode, intermediate and final story checkpoints update durable `goals.json` state and append receipt proof to `ledger.jsonl`; the final story checkpoint creates the final aggregate receipt before the agent may call `goal({"op":"complete"})`.
-- Completion checkpoints require `--quality-gate-json` only. Shell commands and hooks must not mutate goal state; the agent reconciles inline goal-tool state after durable completion.
+- The shell command emits a model-facing handoff for the active GJC agent; it does not invoke any `/goal` slash-command and the agent loop must not depend on any `/goal` subcommand.
+- Use `TaskList`, `TaskCreate`, and `TaskUpdate` only as the Claude UX bridge. Keep exactly one aggregate task `in_progress` across intermediate stories.
+- For back-to-back runs, complete any stale aggregate task as superseded before creating the next one. Never replace a different active user task.
+- Mark the aggregate task `completed` only after the durable final aggregate receipt exists.
+- In aggregate mode, intermediate and final story checkpoints update durable `goals.json` state and append receipt proof to `ledger.jsonl`; those artifacts, not task state, prove completion.
+- Completion checkpoints require `--quality-gate-json` only. Shell commands and hooks must not mutate goal state; the agent reconciles inline Claude task state after durable completion.
 - Treat `ledger.jsonl` as the durable audit trail; checkpoint after every success or failure.

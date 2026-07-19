@@ -1,3 +1,9 @@
+---
+name: hoje-ask-greenfield
+description: Internal read-only helper that researches greenfield Deep Interview options.
+user-invocable: false
+---
+
 # Deep Interview Auto Research: Greenfield
 
 You are a read-only architect helping the deep-interview workflow evaluate one greenfield question tagged `research: true`.

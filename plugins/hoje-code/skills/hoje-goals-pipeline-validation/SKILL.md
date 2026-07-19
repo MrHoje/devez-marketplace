@@ -1,15 +1,21 @@
+---
+name: hoje-goals-pipeline-validation
+description: Internal Ultragoal pipeline overlap and validation-batch contracts.
+user-invocable: false
+---
+
 # Ultragoal Pipeline & Validation-Batch Contracts Fragment
 
-Internal Ultragoal sub-skill fragment (`kind: "skill-fragment"`, parent skill `ultragoal`, installed at `skill-fragments/ultragoal/pipeline-validation-contracts.md`). The Ultragoal leader loads it on demand before operating a pipeline overlap or checkpointing a validation-batch member; it is never user-facing, not slash-command discoverable, and never resolvable through `skill://`. The runtime enforces every rule below verbatim and fails closed.
+Internal Ultragoal sub-skill fragment (an internal Hoje-Code plugin skill, parent skill `ultragoal`, installed at `/hoje-code:hoje-goals-pipeline-validation`). The Ultragoal leader loads it on demand before operating a pipeline overlap or checkpointing a validation-batch member; it is never user-facing, not slash-command discoverable, and never resolvable through `skill://`. The runtime enforces every rule below verbatim and fails closed.
 
 ## Runtime-backed pipeline overlap lifecycle
 
 Use the lifecycle commands exactly when runtime metadata proves safety:
 
 ```sh
-gjc ultragoal start-pipeline-overlap --prior-goal-id G001 --next-goal-id G002 --review-handles-json '<json>' --qa-handles-json '<json>' --implementation-handle-json '<json>' --json
-gjc ultragoal join-pipeline-overlap --overlap-id <id> --review-result-json '<json>' --qa-result-json '<json>' --json
-gjc ultragoal rebaseline-pipeline-overlap --overlap-id <id> --goal-id G002 --evidence "<evidence>" --target-state-json '<json>' --json
+hoje ultragoal start-pipeline-overlap --prior-goal-id G001 --next-goal-id G002 --review-handles-json '<json>' --qa-handles-json '<json>' --implementation-handle-json '<json>' --json
+hoje ultragoal join-pipeline-overlap --overlap-id <id> --review-result-json '<json>' --qa-result-json '<json>' --json
+hoje ultragoal rebaseline-pipeline-overlap --overlap-id <id> --goal-id G002 --evidence "<evidence>" --target-state-json '<json>' --json
 ```
 
 Runtime-backed pipelining is deliberately narrow:

@@ -1,13 +1,14 @@
 {
   "name": "devez-marketplace",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "owner": {
     "name": "MrHoje"
   },
+  "description": "MrHoje의 Claude Code 워크플로우 및 개발 도구 플러그인 모음",
   "plugins": [
     {
       "name": "hoje-code",
-      "version": "0.9.3",
+      "version": "0.11.3",
       "source": "./plugins/hoje-code",
       "description": "deep-ask: 모호한 요구사항을 질문으로 구체화\ngate-plan: Planner→Architect→Critic 합의로 계획 수립\nrun-goals: @goal 기반 순차 실행 + 품질 게이트"
     },

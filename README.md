@@ -6,7 +6,7 @@ Claude Code 플러그인 마켓플레이스
 
 | 플러그인 | 버전 | 설명 |
 |---------|------|------|
-| `hoje-code` | **v0.9.3** 🔥 | deep-ask, gate-plan, run-goals 워크플로우 스킬 |
+| `hoje-code` | **v0.11.3** 🔥 | deep-ask, gate-plan, run-goals 워크플로우 스킬 |
 
 ## 설치 방법
 
@@ -47,7 +47,8 @@ Claude Code에서:
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|---------|
-| **v0.9.3** 🔥 | 2026-07-09 | gajae-code v0.9.3 기준 업데이트 |
+| **v0.11.3** 🔥 | 2026-07-20 | Gajae-Code v0.11.3 동기화, 버전 고정 런처·세션 훅·Claude 호환 계층 추가 |
+| v0.9.3 | 2026-07-09 | gajae-code v0.9.3 기준 업데이트 |
 | v0.8.1 | — | gajae-code v0.8.1 기준 최초 포팅 |
 
 ## 최신화 가이드
@@ -58,12 +59,11 @@ Claude Code에서:
 
 | 원본 (gajae) | 변경 (hoje-code) |
 |-------------|-----------------|
-| `.gjc/` | `.hoje/` |
-| `gjc` (CLI 명령어) | `hoje` |
-| `GJC` | `Hoje-Code` |
-| `/skill:deep-interview` | `/skill:hoje-ask` |
-| `/skill:ralplan` | `/skill:hoje-plan` |
-| `/skill:ultragoal` | `/skill:hoje-goals` |
+| GJC 런타임 명령 | `hoje` 버전 고정 런처로 실행 |
+| `.gjc/`, `GJC_*`, `gjc` 설정 키 | 백엔드 호환을 위해 유지 |
+| `/skill:deep-interview` | `/hoje-code:hoje-ask` |
+| `/skill:ralplan` | `/hoje-code:hoje-plan` |
+| `/skill:ultragoal` | `/hoje-code:hoje-goals` |
 
 ### 미포팅 스킬
 
