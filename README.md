@@ -1,4 +1,4 @@
-# hoje-marketplace
+# devez-marketplace
 
 Claude Code 플러그인 마켓플레이스
 
@@ -6,7 +6,7 @@ Claude Code 플러그인 마켓플레이스
 
 | 플러그인 | 버전 | 설명 |
 |---------|------|------|
-| `hoje-code` | **v0.11.3** 🔥 | deep-ask, gate-plan, run-goals 워크플로우 스킬 |
+| `hoje-code` | **v0.13.0** 🔥 | 독립형 deep-ask, gate-plan, run-goals 워크플로우 |
 
 ## 설치 방법
 
@@ -18,7 +18,7 @@ Claude Code 플러그인 마켓플레이스
 "hoje": {
   "source": {
     "source": "git",
-    "url": "https://github.com/MrHoje/hoje-marketplace.git"
+    "url": "https://github.com/MrHoje/devez-marketplace.git"
   }
 }
 ```
@@ -38,7 +38,7 @@ Claude Code에서:
 | `hoje-plan` | Planner→Architect→Critic 합의 계획 수립 (ADR, RALPLAN-DR 구조) |
 | `hoje-goals` | @goal 블록 기반 순차 실행 + 품질 게이트 + ledger 감사 |
 | `hoje-ask-auto-answer` | (내부) 모호성 기반 자동 응답 프래그먼트 |
-| `hoje-ask-auto-research` | (내부) 그린필드 조사 프래그먼트 |
+| `hoje-ask-greenfield` | (내부) 그린필드 조사 프래그먼트 |
 | `hoje-ask-panel` | (내부) 복수 페르소나 측면 검토 패널 |
 | `hoje-goals-slop-cleaner` | (내부) AI Slop 정리 프래그먼트 |
 | `hoje-goals-pipeline-validation` | (내부) 파이프라인 검증 계약 프래그먼트 |
@@ -47,6 +47,7 @@ Claude Code에서:
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|---------|
+| **v0.13.0** 🔥 | 2026-07-20 | Node 네이티브 독립 런타임, `.hoje` 상태, 번들 역할 에이전트, 실행 강도 추가; Bun/GJC/tmux 실행 의존성 제거 |
 | **v0.11.3** 🔥 | 2026-07-20 | Gajae-Code v0.11.3 동기화, 버전 고정 런처·세션 훅·Claude 호환 계층 추가 |
 | v0.9.3 | 2026-07-09 | gajae-code v0.9.3 기준 업데이트 |
 | v0.8.1 | — | gajae-code v0.8.1 기준 최초 포팅 |
@@ -59,14 +60,14 @@ Claude Code에서:
 
 | 원본 (gajae) | 변경 (hoje-code) |
 |-------------|-----------------|
-| GJC 런타임 명령 | `hoje` 버전 고정 런처로 실행 |
-| `.gjc/`, `GJC_*`, `gjc` 설정 키 | 백엔드 호환을 위해 유지 |
+| GJC 런타임 명령 | 번들 Node 런타임의 `hoje` 명령으로 실행 |
+| `.gjc/`, `GJC_*`, `gjc` 설정 키 | `.hoje/`, `HOJE_*`, `hoje` 네이티브 계약으로 변환 |
 | `/skill:deep-interview` | `/hoje-code:hoje-ask` |
 | `/skill:ralplan` | `/hoje-code:hoje-plan` |
 | `/skill:ultragoal` | `/hoje-code:hoje-goals` |
 
-### 미포팅 스킬
+### 대체된 기능
 
 | 스킬 | 사유 |
 |------|------|
-| `team` | GJC tmux 전용 — Claude Code 환경과 호환되지 않음 |
+| `team` | 번들 `executor`, `executor-qa`, `architect`, `critic`, `planner` Agent로 대체 |

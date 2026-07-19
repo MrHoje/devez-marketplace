@@ -17,7 +17,7 @@ process.stdin.on("end", () => {
     if (envFile) {
       fs.appendFileSync(
         envFile,
-        `export GJC_SESSION_ID='${sessionId}'\nexport HOJE_SESSION_ID='${sessionId}'\n`,
+        `export HOJE_SESSION_ID='${sessionId}'\n`,
         "utf8",
       );
     }
@@ -26,7 +26,7 @@ process.stdin.on("end", () => {
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "SessionStart",
-          additionalContext: `Hoje-Code runtime initialized for ${sessionId}. Use the pinned hoje launcher for workflow state commands.`,
+          additionalContext: `Hoje-Code native runtime initialized for ${sessionId}. Use the bundled hoje launcher for workflow state commands.`,
         },
       }),
     );

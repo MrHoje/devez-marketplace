@@ -1,28 +1,32 @@
 ---
 name: hoje-plan
-description: Consensus planning entrypoint that auto-gates vague team/ultragoal requests before execution
+description: Consensus planning entrypoint that auto-gates vague Hoje Goals strict mode/ultragoal requests before execution
 disable-model-invocation: true
 argument-hint: "[--interactive] [--deliberate] [--architect openai-code] [--critic openai-code] <task description>"
 level: 4
 
-source: "forked from upstream ralplan skill and rebranded for GJC"
+source: "forked from upstream ralplan skill and rebranded for Hoje"
 ---
 
 ## Hoje-Code Claude compatibility
 
-These rules override conflicting GJC-harness transport instructions below:
+These rules override conflicting upstream transport instructions below:
 
-- Run backend workflow commands through `hoje`. The bundled launcher selects the pinned Gajae-Code runtime and supplies the current Claude session id.
-- Keep GJC runtime state and configuration names unchanged: `.gjc/`, `GJC_SESSION_ID`, `GJC_CONFIG_DIR`, `GJC_CODING_AGENT_DIR`, and JSON key `gjc` are backend contracts.
-- Use Claude Code's `AskUserQuestion` for upstream question operations. Never pass GJC-only `deepInterview` or `workflowGate` metadata to that tool; persist required answer, scoring, and approval state through the documented `hoje state ...` legacy path.
+- Run workflow commands through the bundled `hoje` launcher. It invokes the Hoje-native Node runtime and never requires Gajae-Code or Bun.
+- Use Hoje-native state contracts: `.hoje/`, `HOJE_SESSION_ID`, `HOJE_CONFIG_DIR`, `HOJE_CODING_AGENT_DIR`, and JSON key `hoje`.
+- Use Claude Code's `AskUserQuestion` for question operations. Do not pass upstream-only `deepInterview` or `workflowGate` metadata to that tool; persist required answer, scoring, and approval state through `hoje state ...`.
 - Use Claude Code's Agent tool for upstream subagent operations and its resume handle when continuity is required.
 - Use Claude Code tasks as the inline UX bridge: create one aggregate task, keep it `in_progress` during intermediate story checkpoints, and mark it `completed` only after the final durable receipt. Durable `goals.json` and `ledger.jsonl` remain authoritative.
 - Invoke internal helpers through their namespaced Hoje-Code skills. They are hidden from the user command menu but remain model-invocable.
+- In user-facing prose, say Hoje Ask, Hoje Plan, and Hoje Goals. Lower-level command names such as `ralplan` and `ultragoal` are CLI compatibility aliases only.
+
+- Role agents are bundled by this plugin. Whenever the workflow says to launch Planner, Architect, or Critic, call the Agent tool with `subagent_type` `hoje-code:planner`, `hoje-code:architect`, or `hoje-code:critic`. Never depend on user-global agent definitions.
 
 
-# Ralplan (Consensus Planning Alias)
 
-Ralplan is the consensus planning workflow. It triggers iterative planning with Planner, Architect, and Critic agents until consensus is reached, with **RALPLAN-DR structured deliberation** (short mode by default, deliberate mode for high-risk work).
+# Hoje Plan (Consensus Planning Alias)
+
+Hoje Plan is the consensus planning workflow. It triggers iterative planning with Planner, Architect, and Critic agents until consensus is reached, with **RALPLAN-DR structured deliberation** (short mode by default, deliberate mode for high-risk work).
 
 ## Usage
 
@@ -34,8 +38,8 @@ Ralplan is the consensus planning workflow. It triggers iterative planning with 
 
 - `--interactive`: Adds draft-review prompts and one-at-a-time reconciliation; final approval always uses an `AskUserQuestion` workflow gate and never auto-executes.
 - `--deliberate`: Forces high-risk deliberation: pre-mortem plus expanded test planning. It may also auto-enable for explicit auth/security, migration, destructive, incident, compliance/PII, or public-API-breakage risk.
-- `--architect openai-code` / `--critic openai-code`: Use OpenAI code for that review pass when available; otherwise note the fallback and use default GJC review.
-- `--write --stage <type> --stage_n <N> --artifact <markdown file path or markdown string>`: Native writer for Planner/Architect/Critic/revision/ADR/final pending-approval markdown under `.gjc/_session-{sessionid}/plans/ralplan/<run-id>/`; do not edit `.gjc/` directly.
+- `--architect openai-code` / `--critic openai-code`: Use OpenAI code for that review pass when available; otherwise note the fallback and use default Hoje review.
+- `--write --stage <type> --stage_n <N> --artifact <markdown file path or markdown string>`: Native writer for Planner/Architect/Critic/revision/ADR/final pending-approval markdown under `.hoje/_session-{sessionid}/plans/ralplan/<run-id>/`; do not edit `.hoje/` directly.
 
 ## Usage with interactive mode
 
@@ -45,33 +49,33 @@ Ralplan is the consensus planning workflow. It triggers iterative planning with 
 
 ## Corrupt current-session state recovery
 
-For corrupt, tampered, unreadable, or stale current-session ralplan state, run `hoje state clear --force --mode ralplan` scoped by `--session-id`, command payload, or `GJC_SESSION_ID`; it clears only ralplan state for that session.
+For corrupt, tampered, unreadable, or stale current-session ralplan state, run `hoje state clear --force --mode ralplan` scoped by `--session-id`, command payload, or `HOJE_SESSION_ID`; it clears only ralplan state for that session.
 
 ## Behavior
 
 ## Planning/Execution Boundary
 
-Ralplan is planning only. It may inspect context and draft plan/spec/proposal artifacts, but those remain `pending approval` until explicit current-turn or structured-UI execution approval. Before that approval, do not mutate product source, run mutation-oriented shell, commit, push, open PRs, invoke execution skills, or delegate implementation.
+Hoje Plan is planning only. It may inspect context and draft plan/spec/proposal artifacts, but those remain `pending approval` until explicit current-turn or structured-UI execution approval. Before that approval, do not mutate product source, run mutation-oriented shell, commit, push, open PRs, invoke execution skills, or delegate implementation.
 
-Persist planning artifacts and handoffs through the ralplan CLI writer, never direct `.gjc/` edits:
-Direct `write`, `edit`, or `ast_edit` calls against `.gjc/_session-{sessionid}/specs`, `.gjc/_session-{sessionid}/plans`, `.gjc/_session-{sessionid}/state`, or any other `.gjc/` path are forbidden unless an explicit force override is active.
+Persist planning artifacts and handoffs through the ralplan CLI writer, never direct `.hoje/` edits:
+Direct `write`, `edit`, or `ast_edit` calls against `.hoje/_session-{sessionid}/specs`, `.hoje/_session-{sessionid}/plans`, `.hoje/_session-{sessionid}/state`, or any other `.hoje/` path are forbidden unless an explicit force override is active.
 
 ```bash
 hoje ralplan --write --stage <type> --stage_n <N> --artifact "markdown file path or markdown string"
 # restricted role agents use:
-hoje ralplan --write --stage <type> --stage_n <N> --artifact-env GJC_RALPLAN_ARTIFACT
+hoje ralplan --write --stage <type> --stage_n <N> --artifact-env HOJE_RALPLAN_ARTIFACT
 ```
 
-Use stages `planner`, `architect`, `critic`, `revision`, `post-interview`, `adr`, or `final`; increment `--stage_n` each consensus pass. The writer accepts inline markdown, an artifact path prepared outside `.gjc/`, or `--artifact-env GJC_RALPLAN_ARTIFACT`, persists `stage-<NN>-<stage>.md` plus `index.jsonl` under `.gjc/_session-{sessionid}/plans/ralplan/<run-id>/`, and copies `final` to `pending-approval.md`. Ralplan mutation blocking is enforced in code; use temp directories (`os.tmpdir()`/`$TMPDIR`, `/tmp`, `/var/tmp`) only for oversized scratch artifacts, never the repo or `.gjc/`.
+Use stages `planner`, `architect`, `critic`, `revision`, `post-interview`, `adr`, or `final`; increment `--stage_n` each consensus pass. The writer accepts inline markdown, an artifact path prepared outside `.hoje/`, or `--artifact-env HOJE_RALPLAN_ARTIFACT`, persists `stage-<NN>-<stage>.md` plus `index.jsonl` under `.hoje/_session-{sessionid}/plans/ralplan/<run-id>/`, and copies `final` to `pending-approval.md`. Hoje Plan mutation blocking is enforced in code; use temp directories (`os.tmpdir()`/`$TMPDIR`, `/tmp`, `/var/tmp`) only for oversized scratch artifacts, never the repo or `.hoje/`.
 
-Restricted read-only role agents (`planner`, `architect`, `critic`) must pass markdown through `GJC_RALPLAN_ARTIFACT` with `--artifact-env GJC_RALPLAN_ARTIFACT`; their restricted bash environment disables artifact file-path ingestion.
+Restricted read-only role agents (`planner`, `architect`, `critic`) must pass markdown through `HOJE_RALPLAN_ARTIFACT` with `--artifact-env HOJE_RALPLAN_ARTIFACT`; their restricted bash environment disables artifact file-path ingestion.
 
 RECEIPT-ONLY guideline: role agents (`planner`, `architect`, and `critic`) persist durable outputs via `hoje ralplan --write` and return ONLY the receipt fields (`run_id`, `path`, `sha256`) plus verdict/status routing fields; include `stage` and `stage_n` when available, and never return the full persisted body.
 
-This skill runs GJC planning in consensus mode for the provided arguments.
+This skill runs Hoje planning in consensus mode for the provided arguments.
 
 The consensus workflow:
-1. **Planner** creates the initial plan and a compact **RALPLAN-DR summary** before review. Launch the Planner ONCE per run as a detached, resumable subagent (await it before the Architect) and record its returned subagent id as the run's persisted Planner id; persist the stage with `hoje ralplan --write --stage planner --stage_n 1 --artifact-env GJC_RALPLAN_ARTIFACT --planner-id <id> --planner-resumable <true|false>` (see **Persisted Planner** below):
+1. **Planner** creates the initial plan and a compact **RALPLAN-DR summary** before review. Launch the Planner ONCE per run as a detached, resumable subagent (await it before the Architect) and record its returned subagent id as the run's persisted Planner id; persist the stage with `hoje ralplan --write --stage planner --stage_n 1 --artifact-env HOJE_RALPLAN_ARTIFACT --planner-id <id> --planner-resumable <true|false>` (see **Persisted Planner** below):
    - After persistence, return only the receipt/path plus compact planning status; do not paste the full plan markdown back to the caller unless explicitly requested.
    - Principles (3-5)
    - Decision Drivers (top 3)
@@ -80,43 +84,43 @@ The consensus workflow:
    - Deliberate mode only: pre-mortem (3 scenarios) + expanded test plan (unit/integration/e2e/observability)
 2. **User feedback** *(--interactive only)*: If `--interactive` is set, use the `AskUserQuestion` tool to present the draft plan **plus the Principles / Drivers / Options summary** before review (Proceed to review / Request changes / Skip review). Otherwise, automatically proceed to review.
 3. **Review fan-out after Planner persistence**: launch fresh Architect and Critic review lanes against the same immutable Planner receipt/path/sha/stage_n when Critic is **plan-only** and does not consume Architect output.
-   - **Architect lane**: challenge architecture, surface tradeoff tensions, and enrich thin plans with synthesis or missed sub-scope. Persist with `hoje ralplan --write --stage architect --stage_n <N> --artifact-env GJC_RALPLAN_ARTIFACT --json`, then return receipt/path plus `CLEAR`/`WATCH`/`BLOCK` and `APPROVE`/`COMMENT`/`REQUEST CHANGES`.
-   - **Plan-only Critic lane**: independently check quality, principle-option consistency, alternatives, risks, acceptance criteria, and verification; when the plan is thin, request concrete expansion rather than only defects. Persist with `hoje ralplan --write --stage critic --stage_n <N> --artifact-env GJC_RALPLAN_ARTIFACT --json`, then return receipt/path plus `OKAY`/`ITERATE`/`REJECT`.
+   - **Architect lane**: challenge architecture, surface tradeoff tensions, and enrich thin plans with synthesis or missed sub-scope. Persist with `hoje ralplan --write --stage architect --stage_n <N> --artifact-env HOJE_RALPLAN_ARTIFACT --json`, then return receipt/path plus `CLEAR`/`WATCH`/`BLOCK` and `APPROVE`/`COMMENT`/`REQUEST CHANGES`.
+   - **Plan-only Critic lane**: independently check quality, principle-option consistency, alternatives, risks, acceptance criteria, and verification; when the plan is thin, request concrete expansion rather than only defects. Persist with `hoje ralplan --write --stage critic --stage_n <N> --artifact-env HOJE_RALPLAN_ARTIFACT --json`, then return receipt/path plus `OKAY`/`ITERATE`/`REJECT`.
    - **Sequential fallback**: if Critic must evaluate Architect findings, verdict, antithesis, tradeoffs, synthesis, status, or any Architect-produced artifact, await the Architect result before issuing that Architect-dependent Critic pass.
 4. **Review join gate**: before consensus, revision, reconciliation, finalization, or approval, verify both Architect and Critic receipts/verdicts exist for the same Planner artifact/pass (`path`, `sha256`, `stage_n`). A non-`CLEAR` Architect verdict, non-`APPROVE` Architect decision, or any non-`OKAY` Critic verdict routes back to Planner revision; do not finalize from only one review lane.
 5. **Re-review loop** (max 5 iterations): Any non-`OKAY` Critic verdict (`ITERATE` or `REJECT`) or Architect result that is not `CLEAR`/`APPROVE` MUST run the same full closed loop:
    a. Collect Architect + Critic feedback
    b. Revise the plan by resuming the SAME persisted Planner subagent with consolidated Architect + Critic feedback (see **Persisted Planner** below); fall back to a fresh Planner spawn only per the fallback routing table
    c. Return to the review fan-out or sequential fallback path above
-      - Persist each Planner revision with `hoje ralplan --write --stage revision --stage_n <N> --artifact-env GJC_RALPLAN_ARTIFACT --json` before re-review, then pass the receipt/path forward instead of duplicating the full revision markdown in the parent conversation.
+      - Persist each Planner revision with `hoje ralplan --write --stage revision --stage_n <N> --artifact-env HOJE_RALPLAN_ARTIFACT --json` before re-review, then pass the receipt/path forward instead of duplicating the full revision markdown in the parent conversation.
    d. Re-join Architect and Critic verdicts for the same revised Planner artifact/pass
    e. Repeat this loop until Critic returns `OKAY` **and** Architect is `CLEAR`/`APPROVE` for the same Planner artifact/pass, or 5 iterations are reached
    f. If 5 iterations are reached without Critic `OKAY` plus Architect `CLEAR`/`APPROVE`, present the best version to the user
 6. **Post-ralplan interview** (intent reconciliation gate): After the review join gate has both Critic `OKAY` and Architect `CLEAR`/`APPROVE` for the same Planner artifact/pass, and before the plan is finalized, reconcile the consensus plan against the user's actual intent. The goal is to make sure ralplan did not silently bake in assumptions that conflict with what the user wants.
    a. **Collect open items** from the run: every assumption the Planner/Architect/Critic resolved by assumption rather than by stated fact, every ambiguity flagged during review, and every decision the loop made without explicit user input. Source these from the persisted `planner`/`architect`/`critic`/`revision` stage artifacts, not from memory.
-   b. **Cross-check prior context for conflicts**: glob `.gjc/_session-{sessionid}/specs/deep-interview-*.md` and other prior specs/plans/context relevant by topic. For each, list points where the consensus plan contradicts, weakens, or expands beyond a previously crystallized decision, constraint, or non-goal. Cite the conflicting artifact and line/section.
+   b. **Cross-check prior context for conflicts**: glob `.hoje/_session-{sessionid}/specs/deep-interview-*.md` and other prior specs/plans/context relevant by topic. For each, list points where the consensus plan contradicts, weakens, or expands beyond a previously crystallized decision, constraint, or non-goal. Cite the conflicting artifact and line/section.
    c. **Reconcile with the user via the `AskUserQuestion` tool (always, regardless of `--interactive`)**: Never stop idle with plain-text prose after the consensus loop. Every reconciliation question MUST go through the `AskUserQuestion` tool with contextual options plus free-text.
       - If open items exist, confirm the open assumptions and conflicts **one at a time** with the `AskUserQuestion` tool, weakest/highest-impact first, polishing intent. If any confirmation reveals that the plan diverges from user intent, route the consolidated correction back into the re-review loop (step 5b Planner revision) and re-run Architect + Critic before returning here. Cap at the same 5-iteration ceiling.
       - If the plan is crystal clear (no open assumptions or prior-context conflicts), skip straight to the step 8 final-options `AskUserQuestion` instead of inventing filler questions.
       - For every confirmed open item, embed the resolved outcome into the final plan under an **## Intent Reconciliation** section so the `pending approval` artifact records each decision; record any item the user explicitly defers as an open confirmation under that same section.
-   d. Persist the reconciliation with `hoje ralplan --write --stage post-interview --stage_n <N> --artifact-env GJC_RALPLAN_ARTIFACT --json`, then return the receipt/path plus a compact status (reconciled-clean / reconciled-with-revision / open-confirmations-pending) instead of pasting the full body.
-7. On reconciliation completion, re-check the review join gate (Critic `OKAY` plus Architect `CLEAR`/`APPROVE` for the same Planner artifact/pass), mark the plan `pending approval` unless explicit execution approval has already been captured, persist the ADR/final plan via `hoje ralplan --write --stage final --stage_n <N> --artifact-env GJC_RALPLAN_ARTIFACT`, and do not directly edit `.gjc/_session-{sessionid}/plans`. Final plan must include ADR (Decision, Drivers, Alternatives considered, Why chosen, Consequences, Follow-ups) and, when present, the **## Intent Reconciliation** section.
+   d. Persist the reconciliation with `hoje ralplan --write --stage post-interview --stage_n <N> --artifact-env HOJE_RALPLAN_ARTIFACT --json`, then return the receipt/path plus a compact status (reconciled-clean / reconciled-with-revision / open-confirmations-pending) instead of pasting the full body.
+7. On reconciliation completion, re-check the review join gate (Critic `OKAY` plus Architect `CLEAR`/`APPROVE` for the same Planner artifact/pass), mark the plan `pending approval` unless explicit execution approval has already been captured, persist the ADR/final plan via `hoje ralplan --write --stage final --stage_n <N> --artifact-env HOJE_RALPLAN_ARTIFACT`, and do not directly edit `.hoje/_session-{sessionid}/plans`. Final plan must include ADR (Decision, Drivers, Alternatives considered, Why chosen, Consequences, Follow-ups) and, when present, the **## Intent Reconciliation** section.
 8. **Always** present the finalized plan via the `AskUserQuestion` tool (regardless of `--interactive`) with `workflowGate: { stage: "ralplan", kind: "approval" }` on the final question so RPC/headless clients receive a `ralplan`/`approval` workflow gate, not a deep-interview question gate. Use these options:
    - **Refine further** — re-run the consensus loop / request changes, then return here
    - **Approve execution via ultragoal (Recommended)** — goal-tracked autonomous execution
-   - **Approve execution via team** — only when tmux-based interactive worker parallelization is required
+   - **Approve Hoje Goals strict execution** — only when Claude Agent-based interactive worker parallelization is required
    - **Stop here** — keep the plan as `pending approval` and make no further changes
 
    Always include a free-text option. Do not stop with plain text and no `AskUserQuestion`; the post-interview gate's terminal action is this `AskUserQuestion`.
-9. On approval: invoke `/hoje-code:hoje-goals` for execution by default; invoke `hoje team` only when the user explicitly needs tmux-based interactive worker parallelization. On **Refine further**, return to the step 5 re-review loop. On **Stop here**, leave the `pending approval` artifact and stop. Never implement directly.
+9. On approval: invoke `/hoje-code:hoje-goals` for execution by default; invoke `/hoje-code:hoje-goals --strict` only when the user explicitly needs Claude Agent-based interactive worker parallelization. On **Refine further**, return to the step 5 re-review loop. On **Stop here**, leave the `pending approval` artifact and stop. Never implement directly.
 
-   Before invoking `hoje team` or `/hoje-code:hoje-goals`, mark ralplan ready for handoff so the skill tool's chain guard permits the transition:
+   Before invoking `/hoje-code:hoje-goals --strict` or `/hoje-code:hoje-goals`, mark ralplan ready for handoff so the skill tool's chain guard permits the transition:
 
    ```
    hoje state ralplan write --input '{"current_phase":"handoff"}' --json
    ```
 
-   The skill tool then dispatches the execution skill same-turn and runs `hoje state ralplan handoff --to <team|ultragoal> --json` in-process to atomically demote ralplan, promote the callee, and sync `.gjc/_session-{sessionid}/state/skill-active-state.json`. You do not need to run the handoff verb yourself.
+   The skill tool then dispatches the execution skill same-turn and runs `hoje state ralplan handoff --to ultragoal --json` in-process to atomically demote ralplan, promote the callee, and sync `.hoje/_session-{sessionid}/state/skill-active-state.json`. You do not need to run the handoff verb yourself.
 
 > **Important:** Architect and Critic MAY run in the same parallel batch only for the plan-only Critic lane after Planner persistence. Any Architect-dependent Critic pass MUST remain sequential: await Architect before issuing Critic, then apply the same review join gate before consensus.
 
@@ -127,7 +131,7 @@ Follow this ralplan-internal consensus workflow for consensus mode details.
 
 The Planner is a **same-session persisted subagent**: launched detached once, awaited before review fan-out, then **resumed** with consolidated Architect + Critic challenge and enrichment on each re-review pass. Architect and Critic are fresh independent spawns each pass; Critic may run in parallel only when plan-only and tied to the same Planner receipt/path/sha/stage_n. Do NOT modify the subagent control surface; use existing `subagent` resume/steer controls only.
 
-**Persistence boundary:** same-parent, active-session continuity only. Resumability requires retained subagent resume metadata and a persistent parent session (in-memory parent yields `resumable:false`), not just `.gjc` run-state. A terminal subagent can still resume when its retained descriptor points at a saved subagent session; after process restart, missing metadata, or failed/unavailable resume, use fresh Planner fallback.
+**Persistence boundary:** same-parent, active-session continuity only. Resumability requires retained subagent resume metadata and a persistent parent session (in-memory parent yields `resumable:false`), not just `.hoje` run-state. A terminal subagent can still resume when its retained descriptor points at a saved subagent session; after process restart, missing metadata, or failed/unavailable resume, use fresh Planner fallback.
 
 **Resume routing table** (per re-review pass, when resuming the persisted Planner id):
 
@@ -141,7 +145,7 @@ The Planner is a **same-session persisted subagent**: launched detached once, aw
 **Recording persisted-Planner metadata** (audit/routing only — never claim `subagent list` proves resumability, since the snapshot does not expose `resumable`). Ride these optional flags on the normal `--write` for the planner/revision stage of the pass:
 
 ```
-hoje ralplan --write --stage revision --stage_n <N> --artifact-env GJC_RALPLAN_ARTIFACT \
+hoje ralplan --write --stage revision --stage_n <N> --artifact-env HOJE_RALPLAN_ARTIFACT \
   --planner-id <id> --planner-resumable <true|false> \
   --fallback-reason <context_unavailable|not_found|no_runner|resume_failed|process_restart|missing_record> \
   --fallback-attempted-id <id> --fallback-stage-n <N> \
@@ -152,16 +156,16 @@ Set `--planner-resumable true` only when the parent session is provably persiste
 
 ## Pre-Execution Gate
 
-Execution skills (`ultragoal`, `team`) implement bounded work; they are not scope-discovery lanes. Vague execution requests such as `team improve the app` are routed through ralplan so scope, acceptance criteria, consensus, and verification exist before code changes.
+Execution skills (`ultragoal`, `Hoje Goals strict mode`) implement bounded work; they are not scope-discovery lanes. Vague execution requests such as `Hoje Goals strict mode improve the app` are routed through ralplan so scope, acceptance criteria, consensus, and verification exist before code changes.
 
-**Passes the gate** (specific enough for direct execution): file paths, issue/PR numbers, named symbols, explicit tests, numbered steps, acceptance criteria, error references, code blocks, or escape prefixes (`force:` / `!`). Examples: `team fix src/hooks/bridge.ts`, `team implement #42`, `team add validation to processKeywordDetector`, `team do:\n1. Add input validation\n2. Write tests`.
+**Passes the gate** (specific enough for direct execution): file paths, issue/PR numbers, named symbols, explicit tests, numbered steps, acceptance criteria, error references, code blocks, or escape prefixes (`force:` / `!`). Examples: `Hoje Goals strict mode fix src/hooks/bridge.ts`, `Hoje Goals strict mode implement #42`, `Hoje Goals strict mode add validation to processKeywordDetector`, `Hoje Goals strict mode do:\n1. Add input validation\n2. Write tests`.
 
-**Gated — redirected to ralplan**: `team fix this`, `team build the app`, `team improve performance`, `team add authentication`, `team make it better`.
+**Gated — redirected to ralplan**: `Hoje Goals strict mode fix this`, `Hoje Goals strict mode build the app`, `Hoje Goals strict mode improve performance`, `Hoje Goals strict mode add authentication`, `Hoje Goals strict mode make it better`.
 
 Gate auto-pass signals: file path, issue/PR number, camelCase/PascalCase/snake_case symbol, test runner, numbered steps, acceptance criteria, error reference, code block, or escape prefix. If it fires on a well-specified prompt, add one concrete anchor; if you intentionally bypass, prefix `force:` or `!`.
 
 On consensus approval, choose:
 - **ultragoal**: goal-tracked autonomous execution with verification (recommended default)
-- **team**: tmux-based coordinated workers only when interactive worker parallelization is required
+- **Hoje Goals strict mode**: Claude Agent-based coordinated workers only when interactive worker parallelization is required
 
 A redirected request proceeds only through the structured approval option or an explicit execution-skill choice; `just do it` / `skip planning` alone leaves the plan `pending approval`.
