@@ -121,12 +121,14 @@ async function fetchSource(version, source) {
 
 function adaptMainSkill(content, name) {
   let result = content.replace(/^name:\s*[^\r\n]+/m, `name: ${name}`);
-  if (!/^disable-model-invocation:/m.test(result)) {
+  if (name === "hoje-goals") {
+    result = result.replace(/^disable-model-invocation:[^\r\n]*\r?\n/m, "");
+  } else if (!/^disable-model-invocation:/m.test(result)) {
     result = result.replace(/^(description:[^\r\n]+)$/m, "$1\ndisable-model-invocation: true");
   }
   if (name === "hoje-goals" && !/^argument-hint:/m.test(result)) {
     result = result.replace(
-      /^(disable-model-invocation:[^\r\n]+)$/m,
+      /^(description:[^\r\n]+)$/m,
       '$1\nargument-hint: "[--light|--standard|--strict] <approved plan or execution brief>"',
     );
   }

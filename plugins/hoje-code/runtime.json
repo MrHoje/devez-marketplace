@@ -1,6 +1,6 @@
 {
   "runtime": "hoje-native",
-  "runtimeVersion": "0.13.0",
+  "runtimeVersion": "0.13.1",
   "sourceGjcVersion": "0.11.3",
   "engine": "node>=18"
 }

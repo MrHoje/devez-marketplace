@@ -11,6 +11,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(repo, "plugins", "hoje-code", "runtime", "cli.js");
 const launcher = path.join(repo, "plugins", "hoje-code", "scripts", "hoje-runtime.js");
 const hook = path.join(repo, "plugins", "hoje-code", "scripts", "session-start.js");
+const runtimeMetadata = JSON.parse(fs.readFileSync(path.join(repo, "plugins", "hoje-code", "runtime.json")));
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "hoje-runtime-e2e-"));
 
 function run(cwd, args, options = {}) {
@@ -56,7 +57,7 @@ const lightGate = {
 };
 
 const stateDir = workspace("state");
-assert.match(run(stateDir, ["runtime", "version"], { launcher: true }), /runtime=hoje-native\/0\.13\.0/);
+assert.ok(run(stateDir, ["runtime", "version"], { launcher: true }).includes(`runtime=hoje-native/${runtimeMetadata.runtimeVersion}`));
 assert.equal(json(stateDir, ["runtime", "doctor"]).ok, true);
 json(stateDir, ["state", "deep-interview", "write", "--input", JSON.stringify({ current_phase: "round-1", state: { rounds: [{ id: 1 }] } }), "--json"]);
 assert.equal(json(stateDir, ["state", "deep-interview", "read", "--json"]).state.current_phase, "round-1");
@@ -188,8 +189,11 @@ for (const relative of ["runtime", "scripts/hoje-runtime.js", "scripts/session-s
 
 const skillText = walk(path.join(repo, "plugins", "hoje-code", "skills")).filter(file => file.endsWith(".md")).map(file => fs.readFileSync(file, "utf8")).join("\n");
 assert.doesNotMatch(skillText, /\.gjc\/|GJC_|goal\(\{|hoje team|skill-fragments\/|\bbunx\b|\bbun\b|(?<!hoje )deep-interview --write/);
+const skillFrontmatter = (name) => fs.readFileSync(path.join(repo, "plugins", "hoje-code", "skills", name, "SKILL.md"), "utf8").split(/\r?\n---\r?\n/, 1)[0];
+assert.doesNotMatch(skillFrontmatter("hoje-goals"), /^disable-model-invocation:/m);
+for (const name of ["hoje-ask", "hoje-plan"]) assert.match(skillFrontmatter(name), /^disable-model-invocation:\s*true$/m);
 for (const role of ["planner", "architect", "critic", "executor", "executor-qa"]) assert.ok(fs.existsSync(path.join(repo, "plugins", "hoje-code", "agents", `${role}.md`)));
 const manifestVersion = JSON.parse(fs.readFileSync(path.join(repo, "plugins", "hoje-code", ".claude-plugin", "plugin.json"))).version;
-assert.equal(manifestVersion, JSON.parse(fs.readFileSync(path.join(repo, "plugins", "hoje-code", "runtime.json"))).runtimeVersion);
+assert.equal(manifestVersion, runtimeMetadata.runtimeVersion);
 
 console.log(`Hoje runtime E2E passed: ${root}`);

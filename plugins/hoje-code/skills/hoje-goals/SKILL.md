@@ -1,7 +1,6 @@
 ---
 name: hoje-goals
 description: Create and execute durable repo-native multi-goal plans over Hoje goal mode artifacts.
-disable-model-invocation: true
 argument-hint: "[--light|--standard|--strict] <approved plan or execution brief>"
 
 source: "forked from upstream ultragoal skill and rebranded for Hoje"
