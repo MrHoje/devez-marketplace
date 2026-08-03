@@ -43,10 +43,10 @@ const SKILL_MAP = [
     description: "Internal read-only AI slop detector for the Hoje Goals completion gate.",
   },
   {
-    source: "ultragoal/pipeline-validation-contracts.md",
-    target: "hoje-goals-pipeline-validation/SKILL.md",
-    name: "hoje-goals-pipeline-validation",
-    description: "Internal Hoje Goals pipeline overlap and validation-batch contracts.",
+    source: "ultragoal/validation-batch-contracts.md",
+    target: "hoje-goals-validation-batch/SKILL.md",
+    name: "hoje-goals-validation-batch",
+    description: "Internal Hoje Goals validation-batch checkpoint contracts.",
   },
 ];
 
@@ -56,13 +56,13 @@ const CONTENT_RULES = [
   [/\/skill:ultragoal\b/g, "/hoje-code:hoje-goals"],
   [/\/skill:team\b/g, "/hoje-code:hoje-goals --strict"],
   [/(?<![\w.])gjc team\b/g, "hoje ultragoal complete-goals"],
-  [/(?<![\w.])gjc (?=(?:state|ralplan|ultragoal|skills|--version|--smoke-test)\b)/g, "hoje "],
+  [/(?<![\w.])gjc (?=(?:state|deep-interview|ralplan|ultragoal|skills|--version|--smoke-test)\b)/g, "hoje "],
   [/`auto-answer-uncertain\.md`/g, "`/hoje-code:hoje-ask-auto-answer`"],
   [/`auto-research-greenfield\.md`/g, "`/hoje-code:hoje-ask-greenfield`"],
   [/`lateral-review-panel\.md`/g, "`/hoje-code:hoje-ask-panel`"],
-  [/`pipeline-validation-contracts` fragment/g, "`/hoje-code:hoje-goals-pipeline-validation` internal skill"],
+  [/`validation-batch-contracts` fragment/g, "`/hoje-code:hoje-goals-validation-batch` internal skill"],
   [/`ai-slop-cleaner`, an internal Ultragoal sub-skill/g, "`/hoje-code:hoje-goals-slop-cleaner`, an internal Ultragoal skill"],
-  [/`skill-fragments\/ultragoal\/pipeline-validation-contracts\.md`/g, "`/hoje-code:hoje-goals-pipeline-validation`"],
+  [/`skill-fragments\/ultragoal\/validation-batch-contracts\.md`/g, "`/hoje-code:hoje-goals-validation-batch`"],
   [/`skill-fragments\/ultragoal\/ai-slop-cleaner\.md`/g, "`/hoje-code:hoje-goals-slop-cleaner`"],
   [/`kind: "skill-fragment"`/g, "an internal Hoje-Code plugin skill"],
   [/a an internal Hoje-Code plugin skill/g, "an internal Hoje-Code plugin skill"],
@@ -90,6 +90,8 @@ const CONTENT_RULES = [
   [/\bgjc\./g, "hoje."],
   [/--gjc-goal-mode/g, "--hoje-goal-mode"],
   [/JSON key `gjc`/g, "JSON key `hoje`"],
+  [/"gjc"/g, '"hoje"'],
+  [/\bgjc\b/g, "hoje"],
   [/\bGJC\b/g, "Hoje"],
   [/\bUltragoal\b/g, "Hoje Goals"],
   [/\bRalplan\b/g, "Hoje Plan"],
@@ -149,6 +151,8 @@ function adaptMainSkill(content, name) {
 `;
   const askContract = name === "hoje-ask" ? `
 - Resolve Phase 0 settings with \`hoje state deep-interview doctor --json\`. The native runtime reads \`HOJE_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD\`, then \`HOJE_CONFIG_DIR/config.json\` or \`.hoje/config.json\` at key \`hoje.deepInterview.ambiguityThreshold\`, and otherwise uses \`0.2\`.
+- After a Claude \`AskUserQuestion\` answer, call \`hoje deep-interview record-answer --input '<json>' --json\` with the displayed question metadata and selected label. This native recorder creates the locked Round-0 intent digest or intent-review evidence without persisting raw answer text.
+- Use \`hoje deep-interview stage|check|apply|discard\` for two-phase deltas, or \`hoje deep-interview write --input '<json>'\` for an atomic incremental merge. Do not edit \`.hoje/\` state directly.
 - Persist final specs only with \`hoje deep-interview --write --stage final --slug <slug> --spec <markdown-or-path> [--deliberate] --json\`.
 ` : "";
   const intensityProfiles =
@@ -190,13 +194,18 @@ function adaptContent(content, mapping) {
   result = result.replace(/\btmux\b/gi, "Claude Agent");
   result = result.replace(/\bTeam\b/g, "Hoje Goals strict mode");
   result = result.replace(/\bteam\b/g, "Hoje Goals strict mode");
+  result = result.replace(/Hoje Goals strict mode/g, "strict mode");
   result = result.replace(/HOJE_RED_TEAM/g, "red-team");
   result = result.replace(/Hoje Goals strict mode-mode/g, "implicit strict-mode");
   result = result.replace(/bun test(?::[A-Za-z0-9_-]+)?/g, "node --test");
   result = result.replace(/\bbun\b/g, "node");
+  result = result.replace(/the pinned Bun runtime/g, "the bundled Node runtime");
+  result = result.replace(/Compiled Hoje binaries fail executable replay closed because their `process\.execPath` launches Hoje rather than a Bun CLI\.[^\n]+/g, "Hoje validates executable replay against the current trusted Node executable and never resolves an untrusted runtime from `PATH`.");
   result = result.replace(/gjc read\|status/g, "hoje state read|hoje ultragoal status");
   result = result.replace(/`node --version`, `node --version`, deterministic `node\/node -e/g, "`node --version`, deterministic `node -e");
   if (mapping.name === "hoje-goals") {
+    result = result.replace(/`TaskUpdate\(status=pending\)`/g, "`hoje ultragoal pause --json`, then `TaskUpdate(status=pending)`");
+    result = result.replace(/^TaskUpdate\(status=pending\)$/gm, "hoje ultragoal pause --json\nTaskUpdate(status=pending)");
     result = result.replace(
       /4\. If no active Hoje goal exists,[^\n]+/,
       "4. Use `TaskList` to locate this run's aggregate task. If absent, create it with `TaskCreate(subject=<printed objective>, status=in_progress)`. Complete only this plugin's stale aggregate task as superseded before creating a replacement; never modify an unrelated active user task.",
@@ -225,10 +234,20 @@ function adaptContent(content, mapping) {
     result = result.replace(/Hoje Goals strict mode evidence/g, "bundled Agent evidence");
     result = result.replace(/strict Hoje Goals-mode rule/g, "implicit strict-mode rule");
     result = result.replace(/hidden Hoje Goals strict mode scheduling/g, "hidden worker scheduling");
+    result = result.replace(/strict mode remains explicit and separate:[^\n]+/g, "Bundled Agent delegation remains explicit and never owns Hoje Goals checkpoints or ledger state; the leader retains durable workflow ownership.");
+    result = result.replace(
+      /## Use Hoje Goals and strict mode together[\s\S]*?(?=\n## Internal Hoje Goals sub-skill fragments)/,
+      `## Bundled Agent execution\n\nUse the plugin's bundled \`hoje-code:executor\` agent for bounded implementation slices and \`hoje-code:executor-qa\`, \`hoje-code:architect\`, and \`hoje-code:critic\` for independent gate lanes. Claude Agent resume handles provide continuity; there is no separate worker runtime.\n\nThe Hoje Goals leader alone owns \`.hoje/_session-{sessionid}/ultragoal/goals.json\`, \`ledger.jsonl\`, and every checkpoint. Workers return evidence and must never run \`hoje ultragoal checkpoint\` or mutate durable workflow state. Use \`/hoje-code:hoje-goals --strict\` when the strict execution profile is required.\n`,
+    );
+    result = result.replace(/\ban Hoje Goals\b/g, "a Hoje Goals");
+    result = result.replace(/strict mode-mode/g, "strict-mode");
   }
   if (mapping.name === "hoje-plan") {
-    result = result.replace(/--to <(?:team|Hoje Goals strict mode)\|ultragoal>/g, "--to ultragoal");
+    result = result.replace(/--to <(?:team|Hoje Goals strict mode|strict mode)\|ultragoal>/g, "--to ultragoal [--strict]");
     result = result.replace(/Approve execution via Hoje Goals strict mode/g, "Approve Hoje Goals strict execution");
+    result = result.replace(/`(?:Hoje Goals )?strict mode`/g, "`strict`");
+    result = result.replace(/team_unavailable:<reason>/g, "strict_unavailable:<reason>");
+    result = result.replace(/ with `workflowGate: \{ stage: "ralplan", kind: "approval" \}` on the final question so RPC\/headless clients receive a `ralplan`\/`approval` workflow gate, not a deep-interview question gate/g, ". Persist the selected approval route with `hoje state ralplan write --input '<json>' --json` after the answer");
   }
   if (mapping.name === "hoje-ask") {
     result = result.replace(/(?<!deep-interview )hoje state write/g, "hoje state deep-interview write");
@@ -243,6 +262,19 @@ function adaptContent(content, mapping) {
       "Persist every answered shell and scoring enrichment explicitly through `hoje state deep-interview write`; Claude question transport does not mutate Hoje state.",
     );
     result = result.replace(
+      /The Round 0 `AskUserQuestion` call MUST include `deepInterview\.round = 0`,[^\n]+/,
+      "For Round 0, prepare the intent metadata locally, call `AskUserQuestion` with only its supported question/options fields, then call `hoje deep-interview record-answer --input '<json>' --json` with `round: 0`, `selectedOption`, and `intent_contract: { items, confirmation_options }`. Continue only after the native recorder returns an intent digest.",
+    );
+    result = result.replace(
+      /For any proposed missing locked ID, ask one intent-review question through `AskUserQuestion` and include `deepInterview\.intent_review` with the proposed `observed_items`, every `supporting_substitution`, and the exact `approval_options` labels that count as approval\./,
+      "For any proposed missing locked ID, ask one intent-review question through `AskUserQuestion`, then call `hoje deep-interview record-answer` with `selectedOption` and `intent_review` containing the proposed `observed_items`, every `supporting_substitution`, and the exact `approval_options` labels that count as approval.",
+    );
+    result = result.replace(/These fields ride the `AskUserQuestion` tool `deepInterview` metadata and are carried into the gate `stage_state` as bounded, optional values\./g, "Persist these fields as bounded optional values through the native deep-interview state command; do not pass them to `AskUserQuestion`.");
+    result = result.replace(/from `deepInterview\.intent_contract\.items`/g, "from the native `record-answer` payload's `intent_contract.items`");
+    result = result.replace(/`deepInterview\.\*` metadata keys/g, "native `record-answer` payload keys");
+    result = result.replace(/then call `AskUserQuestion` again with the exact original question, options, and `deepInterview\.\*` metadata/g, "then call `AskUserQuestion` again with the exact original supported question/options fields; record native metadata only after a real answer");
+    result = result.replace(/Implementation handoff defaults to `\/hoje-code:hoje-goals`; `\/hoje-code:hoje-goals --strict` is reserved[^\n]+/g, "Implementation handoff defaults to `/hoje-code:hoje-goals`; use `/hoje-code:hoje-goals --strict` for high-risk or genuinely parallel work. Bundled Agent roles provide parallelism; `hoje ultragoal complete-goals` only advances durable goal scheduling. Do NOT implement directly.");
+    result = result.replace(
       /4\. \*\*Initialize state\*\* via `hoje state deep-interview write`:/,
       "4. **Initialize state** via `hoje state deep-interview write --input '<the JSON below>' --json`:",
     );
@@ -251,7 +283,7 @@ function adaptContent(content, mapping) {
       "Implementation handoff defaults to `/hoje-code:hoje-goals`; use `--strict` for high-risk work. Parallel execution uses the plugin's bundled Agent roles and never requires tmux.",
     );
   }
-  if (mapping.name === "hoje-goals-pipeline-validation") {
+  if (mapping.name === "hoje-goals-validation-batch") {
     result += `
 
 ## Hoje-native validation-batch JSON

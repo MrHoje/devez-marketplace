@@ -26,7 +26,7 @@ hoje runtime version
 hoje runtime doctor
 ```
 
-Hoje Ask의 모호성 임계치는 `HOJE_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD`, `HOJE_CONFIG_DIR/config.json`, 프로젝트 `.hoje/config.json` 순으로 해석하며 기본값은 `0.2`입니다. 설정 키는 `hoje.deepInterview.ambiguityThreshold`입니다.
+Hoje Ask의 모호성 임계치는 `HOJE_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD`, `HOJE_CONFIG_DIR/config.json`, 프로젝트 `.hoje/config.json` 순으로 해석하며 기본값은 `0.2`입니다. 설정 키는 `hoje.deepInterview.ambiguityThreshold`입니다. 답변은 `record-answer`, 상태 델타는 `stage/check/apply` 또는 원샷 `write`로 기록하며 원문 답변은 저장하지 않습니다.
 
 ## 실행 강도
 
@@ -56,11 +56,11 @@ node scripts/sync-gajae.mjs --verify
 claude plugin validate --strict plugins/hoje-code
 ```
 
-동기화 스크립트는 npm 최신 버전에 대응하는 Git 태그에서 원본 8개 워크플로우 문서를 읽고 Hoje 네이티브 계약을 결정적으로 적용합니다. 현재 동기화 기준은 Gajae-Code v0.11.3이며, 이는 소스 비교 기준일 뿐 실행 의존성이 아닙니다.
+동기화 스크립트는 npm 최신 버전에 대응하는 Git 태그에서 원본 8개 워크플로우 문서를 읽고 Hoje 네이티브 계약을 결정적으로 적용합니다. 현재 동기화 기준은 Gajae-Code v0.12.11이며, 이는 소스 비교 기준일 뿐 실행 의존성이 아닙니다.
 
 ## 원본 매핑
 
-| hoje-code | Gajae-Code v0.11.3 |
+| hoje-code | Gajae-Code v0.12.11 |
 |---|---|
 | `hoje-ask` | `skills/deep-interview/SKILL.md` |
 | `hoje-plan` | `skills/ralplan/SKILL.md` |
@@ -69,4 +69,11 @@ claude plugin validate --strict plugins/hoje-code
 | `hoje-ask-greenfield` | `skills/deep-interview/auto-research-greenfield.md` |
 | `hoje-ask-panel` | `skills/deep-interview/lateral-review-panel.md` |
 | `hoje-goals-slop-cleaner` | `skills/ultragoal/ai-slop-cleaner.md` |
-| `hoje-goals-pipeline-validation` | `skills/ultragoal/pipeline-validation-contracts.md` |
+| `hoje-goals-validation-batch` | `skills/ultragoal/validation-batch-contracts.md` |
+
+## v0.12.11 동기화 핵심
+
+- Hoje Ask: keyed incremental merge, 단일 staged draft, revision 충돌 감지, locked intent recorder
+- Hoje Plan: typed review disposition, 역할별 resume 메타데이터, planning iteration cap, 설정 기반 auto handoff
+- Hoje Goals: aggregate boundary 검증, read-only quality-gate 사전 검증, review cohort/terminal critic, blocker dedup·재귀 상한
+- GJC Team의 tmux worker heartbeat·memory-guard 변경은 별도 서브 런타임이 없는 Claude 번들 Agent 구조에는 적용하지 않습니다. 역할 격리·재개·체크포인트 소유권 계약만 Hoje Goals에 유지합니다.

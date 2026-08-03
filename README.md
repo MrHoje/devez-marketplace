@@ -6,7 +6,7 @@ Claude Code 플러그인 마켓플레이스
 
 | 플러그인 | 버전 | 설명 |
 |---------|------|------|
-| `hoje-code` | **v0.13.1** 🔥 | 독립형 deep-ask, gate-plan, run-goals 워크플로우 |
+| `hoje-code` | **v0.14.0** 🔥 | 독립형 deep-ask, gate-plan, run-goals 워크플로우 |
 
 ## 설치 방법
 
@@ -41,12 +41,13 @@ Claude Code에서:
 | `hoje-ask-greenfield` | (내부) 그린필드 조사 프래그먼트 |
 | `hoje-ask-panel` | (내부) 복수 페르소나 측면 검토 패널 |
 | `hoje-goals-slop-cleaner` | (내부) AI Slop 정리 프래그먼트 |
-| `hoje-goals-pipeline-validation` | (내부) 파이프라인 검증 계약 프래그먼트 |
+| `hoje-goals-validation-batch` | (내부) validation-batch 체크포인트 계약 |
 
 ## 버전 히스토리
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|---------|
+| **v0.14.0** 🔥 | 2026-08-03 | Gajae-Code v0.12.11 동기화, staged interview state·typed plan disposition·boundary cohort/terminal critic·quality-gate 사전 검증 추가 |
 | **v0.13.1** | 2026-07-20 | `hoje-goals` 모델 자동 호출 허용; 다른 workflow 스킬은 수동 호출 유지 |
 | **v0.13.0** 🔥 | 2026-07-20 | Node 네이티브 독립 런타임, `.hoje` 상태, 번들 역할 에이전트, 실행 강도 추가; Bun/GJC/tmux 실행 의존성 제거 |
 | **v0.11.3** 🔥 | 2026-07-20 | Gajae-Code v0.11.3 동기화, 버전 고정 런처·세션 훅·Claude 호환 계층 추가 |

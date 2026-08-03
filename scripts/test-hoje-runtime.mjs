@@ -46,7 +46,8 @@ const fullGate = (cwd) => {
       surfaceEvidence: [{ id: "S1", contractRef: "runtime", surface: "CLI", status: "covered", invocation: "node --version", verdict: "passed", artifactRefs: ["A1"] }],
       adversarialCases: [{ id: "R1", contractRef: "runtime", scenario: "invalid completion gate", expectedBehavior: "reject", verdict: "passed", artifactRefs: ["A1"] }, { id: "R2", contractRef: "runtime", scenario: "unsafe replay command", expectedBehavior: "reject", verdict: "passed", artifactRefs: ["A1"] }],
     },
-    iteration: { status: "passed", fullRerun: true, evidence: "suite rerun clean", rerunCommands: ["node scripts/test-hoje-runtime.mjs"], blockers: [] },
+    iteration: { status: "passed", fullRerun: true, evidence: "suite rerun clean", rerunCommands: ["node scripts/test-hoje-runtime.mjs"], reviewCohort: { reviewGeneration: 1, sourceHash: `sha256:${"a".repeat(64)}`, joined: true, lanes: { cleaner: { status: "passed", sourceHash: `sha256:${"a".repeat(64)}`, evidence: "clean", blockers: [] }, architect: { status: "CLEAR", sourceHash: `sha256:${"a".repeat(64)}`, evidence: "reviewed", blockers: [] }, qa: { status: "passed", sourceHash: `sha256:${"a".repeat(64)}`, evidence: "tested", blockers: [] } } }, blockers: [] },
+    criticReview: { verdict: "OKAY", sourceHash: `sha256:${"a".repeat(64)}`, evidence: "terminal state reviewed", blockers: [] },
   };
 };
 
@@ -72,9 +73,21 @@ const askDir = workspace("ask");
 assert.equal(json(askDir, ["state", "deep-interview", "doctor", "--json"]).ambiguity_threshold, 0.2);
 json(askDir, ["state", "deep-interview", "write", "--input", JSON.stringify({ current_phase: "interviewing", state: {} }), "--json"], { env: { HOJE_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD: "0.15" } });
 assert.equal(json(askDir, ["state", "deep-interview", "read", "--json"]).state.state.threshold, 0.15);
-const askReceipt = json(askDir, ["deep-interview", "--write", "--stage", "final", "--slug", "native-runtime", "--spec", "# Specification\nIndependent runtime.", "--deliberate", "--json"]);
+const intentItems = [{ id: "artifact:spec", category: "artifact", statement: "Create a specification" }, { id: "surface:cli", category: "surface", statement: "Cover the CLI" }, { id: "integration:node", category: "integration", statement: "Use Node" }, { id: "constraint:native", category: "constraint", statement: "No external runtime" }];
+const intent = json(askDir, ["deep-interview", "record-answer", "--input", JSON.stringify({ round: 0, selectedOption: "Looks right", intent_contract: { items: intentItems, confirmation_options: ["Looks right"] } }), "--json"]); assert.match(intent.intent_digest, /^[a-f0-9]{64}$/);
+json(askDir, ["deep-interview", "stage", "--for", "record-round", "--input", JSON.stringify({ state: { rounds: [{ round: 1, round_key: "r1", status: "scored", ambiguity: 0.4 }] } }), "--json"]);
+assert.equal(json(askDir, ["deep-interview", "check", "--json"]).result_ambiguity, 0.4); json(askDir, ["deep-interview", "apply", "--json"]);
+json(askDir, ["deep-interview", "write", "--input", JSON.stringify({ state: { established_facts: [{ id: "f1", value: "native" }] } }), "--json"]);
+assert.equal(json(askDir, ["deep-interview", "read", "--json"]).state.state.rounds.length, 1);
+const askReceipt = json(askDir, ["deep-interview", "--write", "--stage", "final", "--slug", "native-runtime", "--spec", `# Specification\n${intentItems.map(item => item.id).join("\n")}\nIndependent runtime.`, "--deliberate", "--json"]);
 assert.ok(fs.existsSync(askReceipt.path)); assert.equal(askReceipt.handoff, "ralplan");
 assert.equal(json(askDir, ["state", "ralplan", "read", "--json"]).state.source_spec_path, askReceipt.path);
+
+const conflictDir = workspace("ask-conflict");
+json(conflictDir, ["deep-interview", "write", "--input", JSON.stringify({ state: { rounds: [] } }), "--json"]);
+json(conflictDir, ["deep-interview", "stage", "--for", "merge-state", "--input", JSON.stringify({ state: { note: "draft" } }), "--json"]);
+json(conflictDir, ["state", "deep-interview", "write", "--input", JSON.stringify({ state: { concurrent: true } }), "--json"]);
+assert.match(run(conflictDir, ["deep-interview", "apply", "--json"], { fail: true }), /^$/);
 
 const planDir = workspace("plan");
 const seeded = run(planDir, ["ralplan", "Build independent runtime", "--deliberate"]);
@@ -82,7 +95,12 @@ const runId = seeded.match(/run_id=([^\s]+)/)?.[1];
 assert.ok(runId);
 const receipt = json(planDir, ["ralplan", "--write", "--stage", "planner", "--stage_n", "1", "--run-id", runId, "--artifact", "# Plan\nVerify runtime.", "--json"]);
 assert.equal(receipt.stage, "planner");
-json(planDir, ["ralplan", "--write", "--stage", "final", "--stage_n", "2", "--run-id", runId, "--artifact", "# Final\nApproved.", "--json"]);
+const architectReceipt = json(planDir, ["ralplan", "--write", "--stage", "architect", "--stage_n", "1", "--run-id", runId, "--artifact", "# Architect\nRemove legacy layer.", "--lane-verdict", "WATCH", "--json"]);
+const criticReceipt = json(planDir, ["ralplan", "--write", "--stage", "critic", "--stage_n", "1", "--run-id", runId, "--artifact", "# Critic\nKeep compatibility.", "--lane-verdict", "ITERATE", "--json"]);
+const conflictId = "conflict:runtime:f-architect:f-critic";
+const disposition = { schema: "ralplan.review_conflicts.v1", plannerStageN: 1, findings: [{ findingId: "f-architect", targetId: "runtime", action: "remove", severity: "watch", evidence: "legacy dependency", sourceRole: "architect", sourceReceipt: { stage: "architect", stageN: 1, path: architectReceipt.path, sha256: architectReceipt.sha256 } }, { findingId: "f-critic", targetId: "runtime", action: "change", severity: "watch", evidence: "compatibility", sourceRole: "critic", sourceReceipt: { stage: "critic", stageN: 1, path: criticReceipt.path, sha256: criticReceipt.sha256 } }], conflicts: [], dispositions: [{ conflictId, choice: "synthesize", rationale: "retain only the public contract", decisionOwner: "planner", affectedSections: ["runtime"] }] };
+assert.equal(json(planDir, ["ralplan", "--write", "--stage", "disposition", "--stage_n", "1", "--run-id", runId, "--artifact", JSON.stringify(disposition), "--json"]).conflictCount, 1);
+assert.equal(json(planDir, ["ralplan", "--write", "--stage", "final", "--stage_n", "2", "--run-id", runId, "--artifact", "# Final\nApproved.", "--json"]).auto_handoff.effectiveTarget, "off");
 assert.ok(fs.existsSync(path.join(path.dirname(receipt.path), "pending-approval.md")));
 
 const lightDir = workspace("light");
@@ -112,7 +130,9 @@ const overlap = json(pipelineDir, ["ultragoal", "start-pipeline-overlap", "--pri
 assert.equal(overlap.status, "open");
 assert.equal(json(pipelineDir, ["ultragoal", "join-pipeline-overlap", "--overlap-id", overlap.id, "--review-result-json", JSON.stringify({ status: "passed", evidence: "reviewed frozen change set", blockers: [] }), "--qa-result-json", JSON.stringify({ status: "passed", evidence: "tested frozen change set", blockers: [] }), "--json"]).status, "joined");
 const gateFile = writeJson(pipelineDir, "full-gate.json", fullGate(pipelineDir));
-json(pipelineDir, ["ultragoal", "checkpoint", "--goal-id", "G001", "--status", "complete", "--evidence", "first done", "--quality-gate-json", gateFile, "--json"]);
+const aggregateDeferred = writeJson(pipelineDir, "aggregate-deferred.json", { deferredToBatch: { targetedVerification: { status: "passed", evidence: "targeted", commands: ["node test-a.js"] } } });
+assert.equal(json(pipelineDir, ["ultragoal", "quality-gate", "validate", "--goal-id", "G001", "--quality-gate-json", aggregateDeferred, "--json"]).gate_kind, "deferred");
+json(pipelineDir, ["ultragoal", "checkpoint", "--goal-id", "G001", "--status", "complete", "--evidence", "first done", "--quality-gate-json", aggregateDeferred, "--json"]);
 run(pipelineDir, ["ultragoal", "complete-goals"]);
 json(pipelineDir, ["ultragoal", "checkpoint", "--goal-id", "G002", "--status", "complete", "--evidence", "second done", "--quality-gate-json", gateFile, "--json"]);
 assert.equal(json(pipelineDir, ["ultragoal", "status", "--json"]).status, "complete");
@@ -138,12 +158,12 @@ const batchDir = workspace("batch");
 const batch = [{ schemaVersion: 1, batchId: "VB001", memberIds: ["G001", "G002"], finalGoalId: "G002" }];
 json(batchDir, ["ultragoal", "create-goals", "--brief", "@goal: Batch one\nA\n@goal: Batch final\nB", "--validation-batch-json", writeJson(batchDir, "batch.json", batch), "--json"]);
 run(batchDir, ["ultragoal", "complete-goals"]);
-const deferred = { deferredToBatch: { kind: "validation-batch-deferred", batchId: "VB001", memberGoalId: "G001", targetedVerification: { status: "passed", evidence: "targeted tests", commands: ["node test-a.js"], blockers: [] }, cleaner: { status: "passed", evidence: "no blocking slop", blockers: [] }, iteration: { status: "passed", fullRerun: true, evidence: "rerun passed", rerunCommands: ["node test-a.js"], blockers: [] }, changeSet: { cumulativeFromBase: true, paths: ["a.js"] } } };
+const deferred = { deferredToBatch: { targetedVerification: { status: "passed", evidence: "targeted tests", commands: ["node test-a.js"] } } };
 json(batchDir, ["ultragoal", "checkpoint", "--goal-id", "G001", "--status", "complete", "--evidence", "deferred", "--quality-gate-json", writeJson(batchDir, "deferred.json", deferred), "--json"]);
 const deferredGoal = json(batchDir, ["ultragoal", "status", "--json"]).goals.find(goal => goal.id === "G001");
 run(batchDir, ["ultragoal", "complete-goals"]);
 const closeGate = fullGate(batchDir);
-closeGate.validationBatchClose = { kind: "validation-batch-close", batchId: "VB001", finalGoalId: "G002", memberIds: ["G001", "G002"], memberReceiptIds: { G001: deferredGoal.completionVerification.receiptId }, memberMetadataHashes: { G001: deferredGoal.completionVerification.deferredToBatch.metadataHash }, memberChangeSetHashes: { G001: deferredGoal.completionVerification.deferredToBatch.changeSetHash }, unionChangeSet: { cumulativeFromBase: true, paths: ["a.js", "b.js"] }, evidence: "all members covered" };
+closeGate.validationBatchClose = { coverageEvidence: "all members covered" };
 json(batchDir, ["ultragoal", "checkpoint", "--goal-id", "G002", "--status", "complete", "--evidence", "batch closed", "--quality-gate-json", writeJson(batchDir, "close-gate.json", closeGate), "--json"]);
 assert.equal(json(batchDir, ["ultragoal", "status", "--json"]).status, "complete");
 
@@ -155,8 +175,12 @@ json(steerDir, ["ultragoal", "steer", "--kind", "reorder_pending", "--order-json
 json(steerDir, ["ultragoal", "steer", "--kind", "split_subgoal", "--goal-id", "G002", "--replacements-json", JSON.stringify([{ title: "Two A", objective: "A" }, { title: "Two B", objective: "B" }]), "--evidence", "split", "--rationale", "isolation", "--json"]);
 json(steerDir, ["ultragoal", "steer", "--kind", "annotate_ledger", "--evidence", "note", "--rationale", "audit", "--json"]);
 json(steerDir, ["ultragoal", "classify-blocker", "--classification", "resolvable", "--evidence", "agent can fix", "--json"]);
-const blocked = json(steerDir, ["ultragoal", "record-review-blockers", "--title", "Review issue", "--objective", "Fix it", "--evidence", "review", "--json"]);
+const blocked = json(steerDir, ["ultragoal", "record-review-blockers", "--goal-id", "G001", "--title", "Review issue", "--objective", "Fix it", "--evidence", "review", "--json"]);
+assert.equal(json(steerDir, ["ultragoal", "record-review-blockers", "--goal-id", "G001", "--title", "Review issue", "--objective", "Fix it", "--evidence", "review", "--json"]).deduped, true);
 json(steerDir, ["ultragoal", "steer", "--kind", "mark_blocked_superseded", "--goal-id", blocked.goal_id, "--evidence", "obsolete", "--rationale", "replaced", "--json"]);
+const human = json(steerDir, ["ultragoal", "classify-blocker", "--classification", "human_blocked", "--evidence", "credential requires operator", "--json"]);
+json(steerDir, ["ultragoal", "record-critic-verdict", "--terminus", "pause", "--classification-event-id", human.id, "--verdict", "OKAY", "--evidence", "confirmed human-only dependency", "--json"]);
+assert.equal(json(steerDir, ["ultragoal", "pause", "--json"]).event, "run_paused");
 
 const envFile = path.join(root, "hook-env.sh");
 const hookResult = spawnSync(process.execPath, [hook], { input: JSON.stringify({ session_id: "abc/123" }), encoding: "utf8", env: { ...process.env, CLAUDE_ENV_FILE: envFile } });

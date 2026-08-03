@@ -26,25 +26,48 @@ These rules override conflicting upstream transport instructions below:
 - Role agents are bundled by this plugin. Use `hoje-code:architect` for read-only research/review personas and `hoje-code:planner` for bounded planning. Never depend on user-global agent definitions.
 
 - Resolve Phase 0 settings with `hoje state deep-interview doctor --json`. The native runtime reads `HOJE_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD`, then `HOJE_CONFIG_DIR/config.json` or `.hoje/config.json` at key `hoje.deepInterview.ambiguityThreshold`, and otherwise uses `0.2`.
+- After a Claude `AskUserQuestion` answer, call `hoje deep-interview record-answer --input '<json>' --json` with the displayed question metadata and selected label. This native recorder creates the locked Round-0 intent digest or intent-review evidence without persisting raw answer text.
+- Use `hoje deep-interview stage|check|apply|discard` for two-phase deltas, or `hoje deep-interview write --input '<json>'` for an atomic incremental merge. Do not edit `.hoje/` state directly.
 - Persist final specs only with `hoje deep-interview --write --stage final --slug <slug> --spec <markdown-or-path> [--deliberate] --json`.
 
 
 
-<Purpose>
-Hoje Ask implements Ouroboros-inspired Socratic questioning with mathematical ambiguity scoring. It replaces vague ideas with crystal-clear specifications by asking targeted questions that expose hidden assumptions, measuring clarity across weighted dimensions, and refusing to proceed until ambiguity drops below the resolved threshold for this run. The output feeds into a gated pipeline: **deep-interview → ralplan consensus refinement → pending approval → explicitly approved execution**, ensuring maximum clarity before any mutation starts.
-</Purpose>
+<Purpose_And_Principles>
+**DIPP-1 — Purpose.** Hoje Ask applies Socratic questioning with mathematical ambiguity scoring to replace vague ideas with crystal-clear specifications: it exposes hidden assumptions, measures clarity across weighted dimensions, and refuses to proceed until ambiguity drops below the resolved threshold for this run. The output feeds into a gated pipeline: **deep-interview → ralplan consensus refinement → pending approval → explicitly approved execution**, ensuring maximum clarity before any mutation starts. AI can build anything. The hard part is knowing what to build. Hoje planning Phase 0 expands ideas into specs via analyst + architect, but this single-pass approach struggles with genuinely vague inputs: it asks "what do you want?" instead of "what are you assuming?" Hoje Ask iteratively exposes assumptions and mathematically gates readiness, ensuring the AI has genuine clarity before spending execution cycles. Inspired by the [Ouroboros project](https://github.com/Q00/ouroboros), which demonstrated that specification quality is the primary bottleneck in AI-assisted development.
 
-<Use_When>
-- User has a vague idea and wants thorough requirements gathering before execution
-- User says "deep interview", "interview me", "ask me everything", "don't assume", "make sure you understand"
-- User says "ouroboros", "socratic", "I have a vague idea", "not sure exactly what I want"
-- User wants to avoid "that's not what I meant" outcomes from autonomous execution
-- Task is complex enough that jumping to code would waste cycles on scope discovery
-- User asks for implementation but the target, scope, acceptance criteria, or safety boundary is ambiguous enough that mutation would require guessing
-- User wants mathematically-validated clarity before committing to execution
-- User explicitly requests deep-interview even after being told the request is already clear, bounded, and low-risk
-- User requests a trace/research pre-step before the interview, e.g. `/hoje-code:hoje-ask --trace <idea>`
-</Use_When>
+**DIPP-2 — Use when.**
+
+> **Use when** the user wants requirements clarified before execution: a vague or exploratory idea ("I have a vague idea", "not sure exactly what I want"); an explicit request to interview ("deep interview", "interview me", "ask me everything", "don't assume", "make sure you understand", "ouroboros", "socratic"); a wish to avoid "that's not what I meant" outcomes from autonomous execution or to reach mathematically-validated clarity before committing to execution; a task complex enough that jumping to code would waste cycles on scope discovery; an implementation ask whose target, scope, acceptance criteria, or safety boundary is ambiguous enough that mutation would require guessing; or an explicit deep-interview request even after being told the request is already clear, bounded, and low-risk.
+> - User requests a trace/research pre-step before the interview, e.g. `/hoje-code:hoje-ask --trace <idea>`
+
+**DIPP-3 — Question pacing.**
+
+- Ask ONE question at a time -- never batch multiple questions
+
+**DIPP-4 — Language.**
+
+- Default to English when no language preference is explicit or obvious. Preserve the user/session language for every user-facing announcement, topology confirmation, option label, and interview question when state includes `language.instruction`; do not add language-specific special cases
+
+**DIPP-5 — Self-proofread.**
+
+- Before emitting any user-facing natural-language prose governed by `language.instruction`, perform one silent, best-effort self-proofread in the preserved session language for obvious spelling, spacing, grammar, inflection/particle, and word-choice errors, using the same language-agnostic pass for whatever language is active rather than special-casing any single language. Apply it only to newly generated prose and never announce the proofreading, show before/after text, apologize for it, or re-emit a corrected copy. Do not alter code blocks or identifiers, file paths, CLI commands, JSON/configuration keys, `AskUserQuestion` metadata keys, table/round structure, fixed labels, numeric scores, component ids, status tokens, user quotes or source text, Phase 0 threshold markers such as `Hoje Ask threshold: <resolvedThresholdPercent> (source: <resolvedThresholdSource>)`, or fixed paths such as `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md`; still apply the self-proofread to generated natural-language clauses or cells inside those structures, including Why now rationale, gap text, next-target phrasing, and coverage notes
+
+**DIPP-6 — Weakest dimension.**
+
+- Target the WEAKEST clarity dimension with each question. Make weakest-dimension targeting explicit every round: name the weakest dimension, state its score/gap, and explain why the next question is aimed there
+
+**DIPP-7 — Prompt budget.**
+
+> Keep prompt payloads budgeted: summarize or trim oversized initial context/history before composing question, scoring, spec, or handoff prompts. If the user's initial context is oversized or likely to crowd out downstream prompts, create a concise prompt-safe summary first — one that preserves user intent, decisions, constraints, unknowns, cited files/symbols, and any explicit non-goals — and wait until that summary exists before ambiguity scoring, weakest-dimension selection, question generation, brownfield exploration prompts, spec crystallization, or any downstream execution handoff (bridge to `ralplan`, `ultragoal`, or `strict mode`).
+
+**DIPP-8 — Artifact writes.**
+
+- Use the active Hoje workflow/state CLI as the only sanctioned writer for `.hoje/` interview artifacts; do not edit `.hoje/` directly without an explicit force override.
+
+**DIPP-9 — Execution threshold.**
+
+- Do not proceed to execution until ambiguity ≤ the resolved threshold for this run and the user explicitly approves a scoped execution path
+</Purpose_And_Principles>
 
 <Do_Not_Use_When>
 - User has a detailed, specific request with file paths, function names, or acceptance criteria -- execute directly
@@ -55,27 +78,13 @@ Hoje Ask implements Ouroboros-inspired Socratic questioning with mathematical am
 - User already has a PRD or plan file and explicitly asks to execute it -- use the requested execution skill with that plan
 </Do_Not_Use_When>
 
-<Why_This_Exists>
-AI can build anything. The hard part is knowing what to build. Hoje planning Phase 0 expands ideas into specs via analyst + architect, but this single-pass approach struggles with genuinely vague inputs. It asks "what do you want?" instead of "what are you assuming?" Hoje Ask applies Socratic methodology to iteratively expose assumptions and mathematically gate readiness, ensuring the AI has genuine clarity before spending execution cycles.
-
-Inspired by the [Ouroboros project](https://github.com/Q00/ouroboros) which demonstrated that specification quality is the primary bottleneck in AI-assisted development.
-</Why_This_Exists>
-
 <Execution_Policy>
-- Ask ONE question at a time -- never batch multiple questions
-- Default to English when no language preference is explicit or obvious. Preserve the user/session language for every user-facing announcement, topology confirmation, option label, and interview question when state includes `language.instruction`; do not add language-specific special cases
-- Before emitting any user-facing natural-language prose governed by `language.instruction`, perform one silent, best-effort self-proofread in the preserved session language for obvious spelling, spacing, grammar, inflection/particle, and word-choice errors, using the same language-agnostic pass for whatever language is active rather than special-casing any single language. Apply it only to newly generated prose and never announce the proofreading, show before/after text, apologize for it, or re-emit a corrected copy. Do not alter code blocks or identifiers, file paths, CLI commands, JSON/configuration keys, `AskUserQuestion` metadata keys, table/round structure, fixed labels, numeric scores, component ids, status tokens, user quotes or source text, Phase 0 threshold markers such as `Hoje Ask threshold: <resolvedThresholdPercent> (source: <resolvedThresholdSource>)`, or fixed paths such as `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md`; still apply the self-proofread to generated natural-language clauses or cells inside those structures, including Why now rationale, gap text, next-target phrasing, and coverage notes
-- Target the WEAKEST clarity dimension with each question
 - Before Round 1 ambiguity scoring, run a one-time Round 0 topology enumeration gate that confirms the top-level component list and locks it into state
-- Make weakest-dimension targeting explicit every round: name the weakest dimension, state its score/gap, and explain why the next question is aimed there
 - Gather codebase facts via focused read/search tools or a canonical read-only role agent (`planner`/`architect`) BEFORE asking the user about them
 - For brownfield confirmation questions, cite the repo evidence that triggered the question (file path, symbol, or pattern) instead of asking the user to rediscover it
 - Score ambiguity after every answer -- display the score transparently
 - When the locked topology has multiple active components, score and target each component explicitly so depth-first clarity on one component cannot hide ambiguity in siblings
-- Keep prompt payloads budgeted: summarize or trim oversized initial context/history before composing question, scoring, spec, or handoff prompts
-- If the user's initial context is oversized, create a concise prompt-safe summary first and wait for that summary before ambiguity scoring, question generation, or downstream execution handoff
 - Route ambiguous implementation asks to clarification, deep-interview, or downstream `ralplan` before mutation; do not infer missing target, scope, acceptance criteria, or safety boundary just to start coding.
-- Do not proceed to execution until ambiguity ≤ the resolved threshold for this run and the user explicitly approves a scoped execution path
 - Treat user wording such as `implementation`, "implementation plan", Korean `구현`, or "구현 계획" as describing the eventual target, not permission to implement now.
 - While still in deep-interview, do not implement, edit/write code, launch implementation workers, or start task/skill/ultragoal implementation; continue interviewing for scope, risks, acceptance criteria, and unknowns.
 - When the user wants interview output for eventual implementation, say: "I can interview for an implementation plan, but I won't implement during deep-interview." Then continue clarifying scope, risks, acceptance criteria, and unknowns.
@@ -108,14 +117,14 @@ If this raw bundled skill is loaded by Hoje's native skill loader through `/hoje
 
 ## Corrupt current-session state recovery
 
-When deep-interview detects its own current-session state is corrupt, tampered, unreadable, or stale on resume, run `hoje state clear --force --mode deep-interview` before reseeding or restarting. Scope the clear to the current session via `--session-id`, the command payload, or `HOJE_SESSION_ID`; it clears only deep-interview state for that session and never clears other skills or sessions.
+When deep-interview detects its own current-session state is corrupt, tampered, unreadable, or stale on resume, run `hoje deep-interview clear --force` before reseeding or restarting. Scope the clear to the current session via `--session-id` or `HOJE_SESSION_ID`; it clears only deep-interview state for that session and never clears other skills or sessions.
 
 ## Phase 0: Resolve Ambiguity Threshold (blocking prerequisite)
 
 Complete this phase before Phase 1, before brownfield exploration, before Hoje state persistence, before Round 0, and before any ambiguity scoring. Do not continue if the resolved threshold and source are unknown.
 
 1. **Prefer pre-resolved native state**:
-   - First inspect active deep-interview state with `hoje state deep-interview read --json`.
+   - First inspect active deep-interview state with `hoje deep-interview read --json`.
    - If state contains a finite numeric `threshold` and a non-empty `threshold_source`, use those values, set `<resolvedThreshold>`, `<resolvedThresholdPercent>`, and `<resolvedThresholdSource>`, and skip optional settings-file reads. This is the normal `/hoje-code:hoje-ask` path because the native hook already resolved settings quietly before loading the skill.
 2. **Only if native state lacks a resolved threshold, read threshold settings in runtime precedence order**:
    - YAML config first: read the **single** modern config path the environment selects — `$HOJE_CODING_AGENT_DIR/config.yml` when `HOJE_CODING_AGENT_DIR` is set, else `$HOJE_CONFIG_DIR/agent/config.yml` when `HOJE_CONFIG_DIR` is set, else `~/.hoje/agent/config.yml`. Do not cascade through the other YAML locations when the selected one is absent or invalid.
@@ -133,24 +142,24 @@ Hoje Ask threshold: <resolvedThresholdPercent> (source: <resolvedThresholdSource
 
 5. **Carry threshold source forward mechanically**:
    - Substitute `<resolvedThreshold>`, `<resolvedThresholdPercent>`, and `<resolvedThresholdSource>` throughout the remaining instructions before continuing.
-   - Include `threshold_source` in the first `hoje state deep-interview write` payload and preserve it on later state updates; do not edit `.hoje/_session-{sessionid}/state` files directly unless an explicit force override is active.
+   - Include `threshold_source` in the first `hoje deep-interview write` payload and preserve it on later state updates; do not edit `.hoje/_session-{sessionid}/state` files directly unless an explicit force override is active.
    - Include both threshold and source in the final spec metadata.
 - Read any `language` object from active deep-interview state and carry `language.instruction` forward mechanically. If absent, default to English unless `{{ARGUMENTS}}` makes another user/session language obvious or the user explicitly requests another language. Do not add language-specific special cases.
 
 ## Phase 0.5: Suitability Gate
 
-Run this gate after the Phase 0 threshold marker and before Phase 1, brownfield exploration, `hoje state deep-interview write`, Round 0, ambiguity scoring, or spec writing.
+Run this gate after the Phase 0 threshold marker and before Phase 1, brownfield exploration, `hoje deep-interview write`, Round 0, ambiguity scoring, or spec writing.
 
 If the user request appended after this skill as the final `User:` line is already clear, bounded, low-risk, and asks for a quick fix, single change, known file/symbol edit, explicit command, or direct answer:
 
 1. **Stop deep-interview immediately**:
-   - First inspect current-session state with `hoje state deep-interview read --mode deep-interview --json` (include `--session-id <current-session-id>` when available).
-   - Clear through `hoje state clear --force --mode deep-interview --json` only when the state is a newly seeded empty interview: no recorded `rounds`, no `spec_path`, no `handoff_from`, no final/pending spec, and no user-confirmed topology.
+   - First inspect current-session state with `hoje deep-interview read --json` (include `--session-id <current-session-id>` when available).
+   - Clear through `hoje deep-interview clear --force --json` only when the state is a newly seeded empty interview: no recorded `rounds`, no `spec_path`, no `handoff_from`, no final/pending spec, and no user-confirmed topology.
    - If state already contains rounds, a spec path, handoff metadata, pending approval, or confirmed topology, do not clear it. Preserve the active interview and ask the user whether to continue, cancel, or explicitly clear the workflow.
    - Do not initialize deep-interview state.
    - Do not run Round 0.
    - Do not write a pending-approval spec.
-   - Do not hand off to `ralplan`, `ultragoal`, `Hoje Goals strict mode`, or a role agent.
+   - Do not hand off to `ralplan`, `ultragoal`, `strict mode`, or a role agent.
 2. **Return the request to direct implementation**:
    - Say briefly that deep-interview is unnecessary because the request is already clear and small.
    - State the direct implementation path the normal coding agent should take.
@@ -185,17 +194,17 @@ Run this phase only when the active deep-interview state or invocation indicates
    - If any value is missing, return to Phase 0 instead of using a hardcoded threshold.
 3.6. **Normalize oversized initial context before state init**:
    - Inspect the initial idea plus any pasted artifacts, logs, transcripts, or file excerpts for prompt-budget risk before writing state or generating the first question.
-   - If the initial context is oversized or likely to crowd out downstream prompts, produce a concise prompt-safe summary that preserves user intent, decisions, constraints, unknowns, cited files/symbols, and any explicit non-goals.
+   - Apply the oversize summarize-first principle (DIPP-7) to produce the prompt-safe summary before state init.
    - Treat the summary as the canonical `initial_idea` and store the raw oversized material only as external/advisory context if it can be referenced safely; do not paste the raw oversized context into question-generation, ambiguity-scoring, spec-crystallization, or execution-handoff prompts.
-   - Wait until the summary exists before ambiguity scoring, weakest-dimension selection, brownfield exploration prompts, or any bridge to `ralplan`, `ultragoal`, or `Hoje Goals strict mode`.
 3.7. **Artifact path discipline**:
    - Final specs MUST resolve to `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md` exactly.
    - Write final specs and all ephemeral interview artifacts through the active Hoje workflow/state CLI when available.
    - Direct `.hoje/` file edits are forbidden unless an explicit force override is active; do not use `write`, `edit`, or `ast_edit` against `.hoje/_session-{sessionid}/specs`, `.hoje/_session-{sessionid}/plans`, `.hoje/_session-{sessionid}/state`, or other `.hoje/` paths during normal workflow operation.
    - Preferred: pass the spec markdown **inline** to the native deep-interview write command (`--write … --spec "<markdown>"`) — no scratch file is needed. The CLI is the only sanctioned writer for `.hoje/_session-{sessionid}/specs`.
    - Only if a spec is too large to pass inline, stage it with the `write` tool to a system temp directory (`os.tmpdir()`/`$TMPDIR`, `/tmp`, `/var/tmp`) outside the project tree, then pass that path to `--spec`. The planning phase-boundary block tolerates these neutral temp writes; never stage interview artifacts inside the repo or under `.hoje/`, and do not improvise repo-relative scratch files.
+   - When staging via bash instead of the `write` tool, a heredoc into a neutral temp path (`cat > /tmp/spec.md <<'EOF' … EOF`) is also tolerated; quote the heredoc delimiter (`<<'EOF'`) so the document body stays inert. Never stage into the repo or `.hoje/`, and prefer the `write` tool over bash for large bodies.
 
-4. **Initialize state** via `hoje state deep-interview write --input '<the JSON below>' --json`:
+4. **Initialize state** via `hoje deep-interview write --input '<json>'`:
 
 ```json
 {
@@ -248,7 +257,7 @@ The first line of this announcement MUST be exactly the Phase 0 threshold marker
 > **Project type:** {greenfield|brownfield}
 > **Current ambiguity:** 100% (we haven't started yet)
 
-Before emitting the prose lines in this announcement, apply the `<Execution_Policy>` self-proofread once; keep the required threshold marker and the quoted `{initial_idea}` unchanged.
+Before emitting the prose lines in this announcement, apply the self-proofread once (DIPP-5); keep the required threshold marker and the quoted `{initial_idea}` unchanged.
 
 ## Round 0: Topology Enumeration Gate
 
@@ -279,7 +288,7 @@ Is that topology and locked intent right? Should any component or intent be adde
 
 Options should include contextually relevant choices such as **Looks right**, **Add/remove/merge components**, **Defer one or more components**, plus free-text, translated/localized according to `language.instruction` when present. This is the only pre-scoring question and preserves the one-question-per-round rule.
 
-The Round 0 `AskUserQuestion` call MUST include `deepInterview.round = 0`, `deepInterview.component = "review-topology"`, `deepInterview.dimension = "topology"`, `deepInterview.intent_contract.items` containing the exact displayed locked-intent items, and `deepInterview.intent_contract.confirmation_options` listing only the displayed affirmative labels that lock the proposal (normally **Looks right**). The runtime recorder canonicalizes and locks this contract only when the user selects one of those labels; correction, deferral, free-text, and clarification answers never lock the pre-question proposal. Do not manually copy raw free text into intent evidence, and do not continue if this required recorder write fails.
+For Round 0, prepare the intent metadata locally, call `AskUserQuestion` with only its supported question/options fields, then call `hoje deep-interview record-answer --input '<json>' --json` with `round: 0`, `selectedOption`, and `intent_contract: { items, confirmation_options }`. Continue only after the native recorder returns an intent digest.
 
 3. **Lock topology into state** after the answer. Store a normalized component list and confirmation timestamp:
 
@@ -316,9 +325,9 @@ The Round 0 `AskUserQuestion` call MUST include `deepInterview.round = 0`, `deep
 }
 ```
 
-In the same Round 0 answer, the runtime recorder persists `state.intent_contract` version 1 from `deepInterview.intent_contract.items`. It contains the four exact categories `artifact`, `surface`, `integration`, and `constraint`; every item has a unique category-prefixed ID (for example `surface:review`) and a bounded non-empty statement. The recorder canonically sorts items, persists the full SHA-256 manifest digest, and binds confirmation to a redacted answer-hash reference. The confirmation answer locks this manifest before Round 1; later prose, inferred implementation detail, raw answer content, or a regenerated digest cannot replace it.
+In the same Round 0 answer, the runtime recorder persists `state.intent_contract` version 1 from the native `record-answer` payload's `intent_contract.items`. It contains the four exact categories `artifact`, `surface`, `integration`, and `constraint`; every item has a unique category-prefixed ID (for example `surface:review`) and a bounded non-empty statement. The recorder canonically sorts items, persists the full SHA-256 manifest digest, and binds confirmation to a redacted answer-hash reference. The confirmation answer locks this manifest before Round 1; later prose, inferred implementation detail, raw answer content, or a regenerated digest cannot replace it.
 
-Before spec persistence, include every preserved locked ID literally in the final spec. Additions and clarifications need no extra question; the runtime derives and persists a `not_required` review when every locked ID remains. For any proposed missing locked ID, ask one intent-review question through `AskUserQuestion` and include `deepInterview.intent_review` with the proposed `observed_items`, every `supporting_substitution`, and the exact `approval_options` labels that count as approval. The runtime recorder writes `pending` when the user does not approve and writes `approved` only when an approval option is selected, binding the review to the recorder-generated answer hash without storing raw answer text. Approved reductions require every removed ID to map to an observed replacement ID. Spec persistence and handoff fail closed for missing, pending, malformed, stale, or unrecorded reduction review evidence. Intent review approves only that output reduction and never authorizes execution or ralplan handoff.
+Before spec persistence, include every preserved locked ID literally in the final spec. Additions and clarifications need no extra question; the runtime derives and persists a `not_required` review when every locked ID remains. For any proposed missing locked ID, ask one intent-review question through `AskUserQuestion`, then call `hoje deep-interview record-answer` with `selectedOption` and `intent_review` containing the proposed `observed_items`, every `supporting_substitution`, and the exact `approval_options` labels that count as approval. The runtime recorder writes `pending` when the user does not approve and writes `approved` only when an approval option is selected, binding the review to the recorder-generated answer hash without storing raw answer text. Approved reductions require every removed ID to map to an observed replacement ID. Spec persistence and handoff fail closed for missing, pending, malformed, stale, or unrecorded reduction review evidence. Intent review approves only that output reduction and never authorizes execution or ralplan handoff.
 
 4. **Legacy state migration:** When resuming an existing `deep-interview` state file that lacks `topology`, treat it as `"status": "legacy_missing"`. If no final `spec_path` exists yet, run Round 0 before the next ambiguity scoring pass and then continue with the existing transcript. If a final spec already exists, do not rewrite history; note in any handoff that topology was not captured for that legacy interview.
 
@@ -382,11 +391,11 @@ Round {n} | Component: {target_component_name} | Targeting: {weakest_dimension} 
 
 Options should include contextually relevant choices plus free-text, translated/localized according to `language.instruction` when present.
 
-After applying `language.instruction` to the visible question, options, and generated rationale, apply the self-proofread once to new prose only; preserve only the Round/Component/Targeting/Ambiguity line structure, fixed labels, numeric ambiguity value, component/target identifiers, and `deepInterview.*` metadata keys. Do not exempt generated natural-language rationale such as Why now.
+After applying `language.instruction` to the visible question, options, and generated rationale, apply the self-proofread once to new prose only (DIPP-5); preserve only the Round/Component/Targeting/Ambiguity line structure, fixed labels, numeric ambiguity value, component/target identifiers, and native `record-answer` payload keys. Do not exempt generated natural-language rationale such as Why now.
 
 Claude's `AskUserQuestion` transport does not accept Hoje workflow metadata. After each answer, persist the answered shell and scoring enrichment explicitly with `hoje state deep-interview write --input '<json>' --json`.
 
-If the `AskUserQuestion` tool returns `clarificationQuestion`, treat it as a non-answer about the displayed choices. Answer the clarification briefly from the current interview context, then call `AskUserQuestion` again with the exact original question, options, and `deepInterview.*` metadata. A clarification bypasses Step 2b′ auto-answer, Step 2b″ free-text refine, Step 2c ambiguity scoring, Step 2d progress reporting, and Step 2e state updates; it must not be recorded as a round answer. This does not violate the one-question-per-round rule because the round remains unresolved until the user submits a real listed option or `Other` answer.
+If the `AskUserQuestion` tool returns `clarificationQuestion`, treat it as a non-answer about the displayed choices. Answer the clarification briefly from the current interview context, then call `AskUserQuestion` again with the exact original supported question/options fields; record native metadata only after a real answer. A clarification bypasses Step 2b′ auto-answer, Step 2b″ free-text refine, Step 2c ambiguity scoring, Step 2d progress reporting, and Step 2e state updates; it must not be recorded as a round answer. This does not violate the one-question-per-round rule because the round remains unresolved until the user submits a real listed option or `Other` answer.
 
 ### Step 2b′: Auto-Answer Opted-Out Questions
 
@@ -396,7 +405,7 @@ Auto-answer has a clarity cap: unless the architect confidence is `high` and unc
 
 ### Step 2b″: Refine Free-Text Answers
 
-When the user's answer is free-text that carries reasoning, constraints, or scope decisions, do not forward it to scoring as a lossy one-line label. First structure it into a compact interpretation using the canonical sections — **Decision**, **Reasoning**, **Constraints (user-stated)**, **Out of scope (user-stated)**, and **Codebase context (verified)** (omit empty sections) — then confirm with exactly one `AskUserQuestion` that nothing is lost or misrepresented. Apply `language.instruction` when present.
+When the user's answer is free-text that carries reasoning, constraints, or scope decisions, do not forward it to scoring as a lossy one-line label. First structure it into a compact interpretation using the canonical sections — **Decision**, **Reasoning**, **Constraints (user-stated)**, **Out of scope (user-stated)**, and **Codebase context (verified)** (omit empty sections). Then confirm with exactly one `AskUserQuestion` that nothing is lost or misrepresented: the `AskUserQuestion` question body MUST render the full structured interpretation — every non-empty canonical section, verbatim — before the confirmation prompt. The user is approving that specific interpretation, so it must be visible inside the question body; never ask "does this capture it?" / "이 해석이 맞아?" without first displaying the interpretation itself. A confirmation `AskUserQuestion` whose body omits the interpretation it is asking about is a hard error: re-issue it with the interpretation shown. Apply `language.instruction` when present.
 
 Offer options such as **Send as-is**, **Add a constraint**, **Mark something out of scope**, **Add context**, and **Rewrite**, plus free-text. If the user picks anything other than "Send as-is", collect the exact missing text with one follow-up `AskUserQuestion` (never infer it from the option label), fold it into the structured interpretation, and re-confirm. Do not advance to scoring while the user is still saying something is missing.
 
@@ -497,6 +506,7 @@ Respond as JSON. Include an additional "ontology" key containing the entities ar
 
 Greenfield: `ambiguity = 1 - (goal × 0.40 + constraints × 0.30 + criteria × 0.30)`
 Brownfield: `ambiguity = 1 - (goal × 0.35 + constraints × 0.25 + criteria × 0.25 + context × 0.15)`
+Brownfield adds the 15% Context Clarity dimension (Goal/Constraint/Criteria become 35/25/25) because safely modifying existing code requires understanding the system being changed.
 
 **Calculate ontology stability:**
 
@@ -544,18 +554,84 @@ Round {n} complete.
 
 Apply `language.instruction` when present before showing this progress report so status text, gaps, and next-target phrasing stay in the preserved session language.
 
-Then apply the self-proofread once to narrative status text, generated prose cells, gaps, and next-target phrasing; preserve only table structure, fixed status labels, scores, weights, component ids, and trigger tokens.
+Then apply the self-proofread once (DIPP-5) to narrative status text, generated prose cells, gaps, and next-target phrasing; preserve only table structure, fixed status labels, scores, weights, component ids, and trigger tokens.
 
 ### Step 2e: Update State
 
 Update state in two phases. The `AskUserQuestion` answer is first recorded by the runtime as an `answered` shell. Scoring then enriches the same round record to `scored` with global scores, per-component `topology.components[].clarity_scores`, `topology.components[].weakest_dimension`, trigger metadata, established-facts changes, ontology snapshot, `topology.last_targeted_component_id`, `auto_researched_rounds`, `auto_answered_rounds`, and `architect_failures`. Persist every answered shell and scoring enrichment explicitly through `hoje state deep-interview write`; Claude question transport does not mutate Hoje state.
 Also recompute and persist `ambiguity_milestone` each round (detect band transitions for the Phase 3 panel), and persist `auto_answer_streak`, `refined_rounds`, `lateral_reviews`, and `lateral_panel_failures` alongside the existing fields.
 
-### Step 2f: Check Soft Limits
+#### Delta payload schemas
 
-- **Round 3+**: Allow early exit if user says "enough", "let's go", "build it"
-- **Round 10**: Show soft warning: "We're at 10 rounds. Current ambiguity: {score}%. Continue or proceed with current clarity?"
-- **Round 100**: Hard cap: "Maximum interview rounds reached. Proceeding with current clarity level ({score}%)."
+Every staged/write payload is one JSON object `{"state": { …delta only… }}`. Envelope lifecycle keys (`current_phase`, `active`, `skill`, `version`, `state_revision`, `receipt`, `updated_at`, `last_applied_draft_id`) are runtime-owned — if included they are stripped and reported back as `ignored_runtime_owned_keys`, never persisted. `state.intent_contract` and `state.intent_review` are recorder-owned: only the Round 0 / intent-review `AskUserQuestion` recorder can write them (they carry canonical digests and answer-hash bindings you cannot fabricate); a payload carrying them is stripped the same way — never hand-construct an intent contract.
+
+**`stage --for record-round`** — exactly one round record, merged into the transcript by `round_key`:
+
+```json
+{
+  "state": {
+    "rounds": [
+      {
+        "round": <n>,
+        "round_key": "<durable key from the answered shell>",
+        "lifecycle": "scored",
+        "ambiguity": <raw 0..1 score>,
+        "scores": { "goal": 0.9, "constraints": 0.8, "criteria": 0.9, "context": 0.85 },
+        "weakest_component_id": "<component id>",
+        "weakest_dimension": "goal|constraints|criteria|context",
+        "component_scores": { "<component-id>": { "goal": 0.9, "constraints": 0.8, "criteria": 0.9, "context": 0.85, "gaps": { } } },
+        "structured_scorer_output": { },
+        "ontology": { },
+        "ontology_stability": { }
+      }
+    ]
+  }
+}
+```
+
+Include only the one round being enriched; identity fields (`question_text`, `answer_hash`) already persisted on the shell never need resending — the merge preserves them and never downgrades `scored` back to `answered`.
+
+**`stage --for update-facts`** — only the changed fact records, merged field-wise by `id`:
+
+```json
+{
+  "state": {
+    "established_facts": [
+      { "id": "<fact-id>", "statement": "<fact>", "round": <n>, "disputed": false }
+    ]
+  }
+}
+```
+
+To dispute: send `{ "id": "<fact-id>", "disputed": true }`. To supersede: send `{ "id": "<old-id>", "disputed": false, "superseded_by": "<new-id>" }` plus the new fact record. A delta can never hard-delete a fact — unaddressed facts survive verbatim, so never resend the full facts array.
+
+**`stage --for merge-state`** — only the changed maintenance fields (shallow-merged into `state`; `null` deletes a key):
+
+```json
+{
+  "state": {
+    "ambiguity_milestone": "<band>",
+    "auto_answer_streak": <n>,
+    "refined_rounds": [<n>],
+    "lateral_reviews": [ { "round": <n>, "personas": [], "findings": "<summary>" } ],
+    "topology": { "components": [ … ], "last_targeted_component_id": "<id>" }
+  }
+}
+```
+
+`topology` and other object fields replace whole — include the full object when changing any part of it; `rounds` and `established_facts` are the only keyed-merge collections.
+
+**`write --input`** — same `{"state":{…}}` shape and same merge semantics as a staged `merge-state` apply, committed in one step. `write --reset --input` replaces the whole `state` with the payload (the locked `intent_contract` is re-attached automatically); use it only for deliberate re-initialization.
+
+### Step 2f: Check Tiered Confirmation Cadence
+
+Confirmation cadence is tiered by round, adopted from ouroboros's ooo interview, while the hard safety cap is retained:
+
+- **Rounds 1-3 (auto-continue)**: minimum context gathering — proceed to the next question without a "continue?" prompt.
+- **Rounds 4-15 (ask to continue)**: after each round, ask "Continue, or proceed with current clarity ({score}%)?" so the user controls depth.
+- **Rounds 16+ (diminishing-returns warning)**: keep asking "Continue?" but prefix a diminishing-returns warning: "We're at {n} rounds (ambiguity: {score}%); each further round yields less. Continue or proceed?"
+- **Round 3+ early exit**: still allow immediate exit if the user says "enough", "let's go", "build it".
+- **Round 100 (hard cap)**: "Maximum interview rounds reached. Proceeding with current clarity level ({score}%)." The tiered cadence never removes this hard safety cap.
 
 ## Phase 3: Lateral Review Panel (milestone-triggered)
 
@@ -584,6 +660,24 @@ A transition occurs whenever the band changes versus the prior scored round — 
 
 **Bookkeeping:** record each convened panel in `state.lateral_reviews` (round, milestone transition or pre-answer trigger, personas dispatched, findings folded). On panel spawn or validation failure, fall back silently to the normal generated question and increment `lateral_panel_failures`; do not expose tool noise unless it changes the next user-facing question. The panel is a prompt-budgeted assist layer — summarize oversized context before dispatch.
 
+### Per-question advisory fanout lanes (distinct from the milestone panel)
+
+Separate from the milestone-triggered lateral panel above, a lightweight **advisory fanout** may assist any single question the main session is about to synthesize or route — especially when the user is terse, uncertain, or would benefit from selectable options instead of another open-ended prompt. Adopted from ouroboros's ooo interview, the standard lanes are:
+
+- `code_context` — inspect repo-local facts and reuse existing exploration before asking the user.
+- `web_context` — browse/search only when current external facts genuinely affect the answer.
+- `ambiguity_contrarian` — find hidden assumptions, vague terms, missing decisions, and risky defaults.
+- `answer_simplifier` — turn the question into 2-3 easy choices or one concise draft answer.
+- `architecture_implications` — check whether the answer changes ownership, interfaces, rollout, or system shape.
+
+Advisory fanout is an assist layer, not a decision maker: it never replaces or delays the single user-facing question, never adds a second question, and never forwards a synthesized answer without the user's approval, edit, or explicit auto-confirm request. It differs from the milestone panel in trigger (per-question, not band-transition) and intent (help the human answer this one question). When both would fire on the same round, run the milestone panel and fold advisory lanes into the same single question. Runtimes without a parallel subagent primitive process lanes sequentially; on lane failure, fall back silently to the normal generated question.
+
+### Structured adapter context and input safety (confused_terms / references / FREETEXT_FIELDS)
+
+`confused_terms` and `references` are optional structured adapter context queued at interview start. They are **non-behavioral**: they MUST NOT alter the first question, are never inferred from vocabulary density, and glossary help is limited to explicitly-confused terms while references are used only for contrast questions. Referenced `url`/`excerpt` values are inert strings that are **never auto-fetched**. Persist these fields as bounded optional values through the native deep-interview state command; do not pass them to `AskUserQuestion`.
+
+Input safety: user-facing free-text fields (an allowlist including `initial_context`, `user_response`, `goal`, `prompt`, `description`, `statement`) legitimately carry prose with shell metacharacters (`;`, `|`, `&`, backticks, `$()`) and must not be rejected as injection; structural fields (ids, categories, hashes) stay strictly validated. Runtime-ingested initial context, user responses, and each incoming structured adapter/LLM response are bounded by character-count DoS caps of 50,000, 10,000, and 100,000 characters respectively rather than by content inspection.
+
 ## Phase 4: Crystallize Spec
 
 When ambiguity ≤ threshold (or hard cap / early exit):
@@ -592,11 +686,11 @@ When ambiguity ≤ threshold (or hard cap / early exit):
 
 **4a. Closure / Acceptance Guard.** Even when ambiguity ≤ threshold, do not treat the math as completion. Run an independent readiness audit from the full main-session perspective (including explore findings, established facts, and triggers the scorer may not have fully weighed). Confirm every active topology component has goal/constraint/criteria coverage, no unresolved or disputed trigger remains on a path that matters, no disputed established fact lacks a `superseded_by` resolution, and no low-confidence auto-answer is standing in for user-confirmed truth above the clarity cap. If a material gap exists, explicitly override the gate to the user — "The math says ready, but I am not accepting it yet because {gap}" — and ask the single highest-impact follow-up, returning to Phase 2. Record any override in `state.closure_overrides`.
 
-**4b. Restate gate.** Once closure passes, collapse the agreed answers into ONE sentence goal that covers every active component, and confirm it with a single `AskUserQuestion`: "If someone read only this line, would they reach the same outcome you have in mind?" Offer **Yes, crystallize**, **Adjust wording**, and **Missing scope**, plus free-text, applying `language.instruction` when present. Because this gate has options, it MUST go through `AskUserQuestion`: do not print the Restate question and options as assistant prose with `Question:`/`Options:` labels. If the Restate gate was already printed that way, immediately call `AskUserQuestion` with the same question/options before accepting or waiting for any answer. On "Adjust wording" / "Missing scope", collect the exact correction with one follow-up `AskUserQuestion`, route it back through Step 2c scoring and established-facts maintenance (a correction can change ambiguity), then re-run closure and ask the Restate gate again. Cap at two loops; if alignment is not reached, return to Phase 2 with a targeted question instead of forcing a goal line. Persist the confirmed line as `state.restated_goal`.
+**4b. Restate gate.** Once closure passes, collapse the agreed answers into ONE sentence goal that covers every active component, and confirm it with a single `AskUserQuestion` whose body MUST begin by stating that one-sentence goal verbatim, followed by: "If someone read only this line, would they reach the same outcome you have in mind?" The goal line must be visible inside the `AskUserQuestion` body; never ask the confirmation without first displaying the collapsed goal it refers to. Offer **Yes, crystallize**, **Adjust wording**, and **Missing scope**, plus free-text, applying `language.instruction` when present. Because this gate has options, it MUST go through `AskUserQuestion`: do not print the Restate question and options as assistant prose with `Question:`/`Options:` labels. If the Restate gate was already printed that way, immediately call `AskUserQuestion` with the same question/options before accepting or waiting for any answer. On "Adjust wording" / "Missing scope", collect the exact correction with one follow-up `AskUserQuestion`, route it back through Step 2c scoring and established-facts maintenance (a correction can change ambiguity), then re-run closure and ask the Restate gate again. Cap at two loops; if alignment is not reached, return to Phase 2 with a targeted question instead of forcing a goal line. Persist the confirmed line as `state.restated_goal`.
 
 1. **Generate the specification** using opus model with the prompt-safe transcript. If the full interview transcript or initial context is too large, include the summary plus all concrete decisions, acceptance criteria, unresolved gaps, and ontology snapshots; never overflow the prompt with raw oversized context.
    - Apply `language.instruction` when present so user-facing prose in the spec preserves the session language; keep code identifiers, file paths, commands, JSON/settings keys, and quoted source text unchanged.
-   - Apply the self-proofread once to newly generated spec prose before persistence, including generated natural-language table cells such as coverage notes, while preserving transcript answers, quoted/source text, code identifiers, file paths, commands, JSON/settings keys, table structure/fixed labels, and `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md` unchanged.
+   - Apply the self-proofread once (DIPP-5) to newly generated spec prose before persistence, including generated natural-language table cells such as coverage notes, while preserving transcript answers, quoted/source text, code identifiers, file paths, commands, JSON/settings keys, table structure/fixed labels, and `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md` unchanged.
 2. **Write the final spec through the workflow CLI**: persist the artifact at `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md`
    - Always use this exact final spec path. Prefer passing the spec markdown **inline** as the `--spec` value; only when it is too large to pass inline, stage it as a file in a system temp directory (`os.tmpdir()`/`$TMPDIR`, `/tmp`, `/var/tmp`) outside the project tree and pass that path — never write scratch specs to the repo root, the project tree, or `.hoje/`.
    - Use the native deep-interview write command with `--write --stage final --slug {slug} --spec <markdown-or-path> [--json]` for artifact and state persistence; direct `.hoje/` file edits are forbidden unless an explicit force override is active.
@@ -731,7 +825,7 @@ After the spec is written, mark it `pending approval` and present execution opti
    - Description: "Goal-tracked autonomous execution — drives the spec to completion with verification. Skip ralplan refinement only when the spec is concrete, low-risk, and trivially small."
    - Action: Invoke `/hoje-code:hoje-goals` with the spec file path as context only after the user explicitly selects this execution option. The spec replaces ultragoal planning input. Recommend this only when the spec needs no further planning; otherwise route through ralplan refinement first.
 
-3. **Execute with Hoje Goals strict mode (only when implementation-ready, simple, AND Claude Agent parallelization is required)**
+3. **Execute with strict mode (only when implementation-ready, simple, AND Claude Agent parallelization is required)**
    - Description: "N coordinated parallel agents in Claude Agent — only when the spec is already implementation-ready and genuinely needs Claude Agent-based interactive worker parallelization."
    - Action: Invoke `/hoje-code:hoje-goals --strict` with the spec file path as the shared plan only after the user explicitly selects this option. Reserve this for the narrow case where the spec is simple/ready and Claude Agent interactive parallel workers are actually needed; otherwise prefer ralplan refinement, then ultragoal.
 
@@ -739,20 +833,20 @@ After the spec is written, mark it `pending approval` and present execution opti
    - Description: "Continue interviewing to improve clarity (current: {score}%)"
    - Action: Return to Phase 2 interview loop.
 
-**IMPORTANT:** On explicit execution selection, **MUST** use the chosen bundled Hoje workflow skill entrypoint (`/hoje-code:hoje-plan`, `/hoje-code:hoje-goals`, or `/hoje-code:hoje-goals --strict`) inside the agent session. `hoje ralplan` is a native CLI that accepts the documented skill flags and seeds local `.hoje/_session-{sessionid}/state` receipts; agent sessions should still drive the consensus loop through `/hoje-code:hoje-plan`. Implementation handoff defaults to `/hoje-code:hoje-goals`; `/hoje-code:hoje-goals --strict` is reserved for when Claude Agent-based interactive worker parallelization is genuinely required, and `hoje ultragoal complete-goals` is a native Claude Agent runtime command used only when the Hoje Goals strict mode workflow explicitly requires the CLI runtime. Do NOT implement directly. The deep-interview agent is a requirements agent, not an execution agent. If oversized initial context was summarized, pass the spec and prompt-safe summary forward, not the raw oversized source material. Without explicit execution selection, stop with the spec marked `pending approval`.
+**IMPORTANT:** On explicit execution selection, **MUST** use the chosen bundled Hoje workflow skill entrypoint (`/hoje-code:hoje-plan`, `/hoje-code:hoje-goals`, or `/hoje-code:hoje-goals --strict`) inside the agent session. `hoje ralplan` is a native CLI that accepts the documented skill flags and seeds local `.hoje/_session-{sessionid}/state` receipts; agent sessions should still drive the consensus loop through `/hoje-code:hoje-plan`. Implementation handoff defaults to `/hoje-code:hoje-goals`; use `/hoje-code:hoje-goals --strict` for high-risk or genuinely parallel work. Bundled Agent roles provide parallelism; `hoje ultragoal complete-goals` only advances durable goal scheduling. Do NOT implement directly.
 
 ### Phase 5b: Handoff before chain
 
-Before invoking `/hoje-code:hoje-plan`, `/hoje-code:hoje-goals --strict`, or `/hoje-code:hoje-goals`, the final spec must already be persisted through the native deep-interview write command. For ordinary user-selected handoff, mark deep-interview ready for the skill tool's chain guard:
+Before invoking `/hoje-code:hoje-plan`, `/hoje-code:hoje-goals --strict`, or `/hoje-code:hoje-goals`, the final spec must already be persisted through the native deep-interview write command (`hoje deep-interview --write --stage final …`). That command itself moves the workflow to the `handoff` phase, so no separate state write is needed for the skill tool's chain guard. Verify readiness with:
 
 ```
-hoje state deep-interview write --input '{"current_phase":"handoff"}' --json
+hoje deep-interview read --json
 ```
 
 For a preselected deliberate ralplan path, prefer the single sanctioned bridge command instead:
 
 ```
-gjc \
+hoje \
 hoje deep-interview --write --stage final --slug {slug} --spec <markdown-or-path> --deliberate --json
 ```
 
@@ -791,9 +885,9 @@ Skipping any stage is possible but reduces quality assurance:
 - Use `read/search/find exploration or a bounded read-only planner/architect subagent` for brownfield codebase exploration (run BEFORE asking user about codebase)
 - Use opus model (temperature 0.1) for ambiguity scoring — consistency is critical
 - Round 0 topology confirmation happens before ambiguity scoring; Phase 2 scoring must honor locked topology and rotate targeting across active components when more than one is present
-- Use `hoje state deep-interview write` / `hoje state deep-interview read` for interview state persistence; the initial and subsequent deep-interview state payloads must include `threshold_source` alongside `threshold`; do not edit `.hoje/_session-{sessionid}/state` directly without force override.
+- Use `hoje deep-interview write` / `hoje deep-interview read` for interview state persistence; the initial and subsequent deep-interview state payloads must include `threshold_source` alongside `threshold`; do not edit `.hoje/_session-{sessionid}/state` directly without force override. For incremental scoring/maintenance updates, prefer the staged-transition verbs (`stage --for <transition> --input '<json>'`, `check`, `apply`, `discard`) — stage only the current delta (one round record by `round_key`, changed facts, or changed fields), never the whole transcript; `write` is incremental by default and replaces only with an explicit `--reset`; the session is inherited from `HOJE_SESSION_ID`, revision CAS is runtime-owned, and the effective `current_ambiguity` is derived and clamped by the CLI at `apply`/`write` — read it from the command output rather than setting it yourself.
 - Use the Hoje workflow CLI to save the final spec at `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md` exactly; do not use `write`, `edit`, or `ast_edit` directly on `.hoje/` paths without force override.
-- Use public Hoje workflow entrypoints to bridge to ralplan, ultragoal, or Hoje Goals strict mode only after explicit execution approval — never implement directly. Implementation handoff defaults to ultragoal; reserve Hoje Goals strict mode for when Claude Agent-based interactive worker parallelization is genuinely required.
+- Use public Hoje workflow entrypoints to bridge to ralplan, ultragoal, or strict mode only after explicit execution approval — never implement directly. Implementation handoff defaults to ultragoal; reserve strict mode for when Claude Agent-based interactive worker parallelization is genuinely required.
 - The lateral-review panel spawns read-only persona subagents (Task tool) in parallel with independent context; it is an assist layer, never an executor and never the completion authority
 - Apply the Refine gate (Step 2b″), the Dialectic Rhythm Guard (Step 2a), and the Closure + Restate gates (Phase 4) through the `AskUserQuestion` tool, preserving `language.instruction` for each; if any of these gates has options, the assistant must call `AskUserQuestion` and must not print `Question:`/`Options:` blocks as assistant prose
 - Use internal fragment auto-modes only at their documented hooks: `/hoje-code:hoje-ask-greenfield` between Step 2a and 2b for greenfield `research: true` questions, `/hoje-code:hoje-ask-auto-answer` as Step 2b′ after `AskUserQuestion` resolves and before scoring, and `/hoje-code:hoje-ask-panel` for the Phase 3 panel personas at ambiguity-milestone transitions and before synthesizing agent-supplied answers.
@@ -885,7 +979,7 @@ Why bad: 45% ambiguity means nearly half the requirements are unclear. The mathe
 
 <Escalation_And_Stop_Conditions>
 - **Hard cap at 100 rounds**: Proceed with whatever clarity exists, noting the risk
-- **Soft warning at 10 rounds**: Offer to continue or proceed
+- **Tiered confirmation cadence**: rounds 1-3 auto-continue, rounds 4-15 ask to continue, rounds 16+ ask with a diminishing-returns warning
 - **Early exit (round 3+)**: Allow with warning if ambiguity > threshold
 - **User says "stop", "cancel", "abort"**: Stop immediately, save state for resume
 - **Ambiguity stalls** (same score +-0.05 for 3 rounds): Activate Ontologist mode to reframe
@@ -916,11 +1010,11 @@ Optional settings in `.hoje/settings.json`:
 
 ```json
 {
-  "gjc": {
+  "hoje": {
     "deepInterview": {
       "ambiguityThreshold": <resolvedThreshold>,
       "maxRounds": 100,
-      "softWarningRounds": 10,
+      "softWarningRounds": 16,
       "minRoundsBeforeExit": 3,
       "enableChallengeAgents": true,
       "autoExecuteOnComplete": false,
@@ -933,23 +1027,23 @@ Optional settings in `.hoje/settings.json`:
 
 ## Resume
 
-If interrupted, run `/hoje-code:hoje-ask` again. The skill resumes from Hoje workflow state via `hoje state deep-interview read`; do not read or edit `.hoje/_session-{sessionid}/state` files directly unless an explicit force override is active.
+If interrupted, run `/hoje-code:hoje-ask` again. The skill resumes from Hoje workflow state via `hoje deep-interview read`; do not read or edit `.hoje/_session-{sessionid}/state` files directly unless an explicit force override is active.
 
-## Integration with staged Hoje Goals strict mode routing
+## Integration with staged strict mode routing
 
-When Hoje Goals strict mode receives a vague input (no file paths, function names, or concrete anchors), it can redirect to deep-interview:
+When strict mode receives a vague input (no file paths, function names, or concrete anchors), it can redirect to deep-interview:
 
 ```
-User: "Hoje Goals strict mode build me a thing"
-Hoje Goals strict mode routing: "Your request is quite open-ended. Would you like to run a deep interview first to clarify requirements?"
+User: "strict mode build me a thing"
+strict mode routing: "Your request is quite open-ended. Would you like to run a deep interview first to clarify requirements?"
   [Yes, interview first] [No, expand directly]
 ```
 
-If the user chooses interview, Hoje Goals strict mode routing invokes `/hoje-code:hoje-ask`. When the interview completes and the user selects an execution path (ultragoal by default, or Hoje Goals strict mode when Claude Agent-based interactive parallelization is required), the spec becomes Phase 0 output and the chosen workflow proceeds from the approved spec.
+If the user chooses interview, strict mode routing invokes `/hoje-code:hoje-ask`. When the interview completes and the user selects an execution path (ultragoal by default, or strict mode when Claude Agent-based interactive parallelization is required), the spec becomes Phase 0 output and the chosen workflow proceeds from the approved spec.
 
 ## Approval-Gated Pipeline: deep-interview → ralplan → pending approval
 
-See the Phase 5b "Approval-Gated Refinement Path" diagram for the full flow. In short: interview → spec at `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md` → user selects "Refine with ralplan consensus" → `/hoje-code:hoje-plan` (Planner/Architect/Critic consensus, plan written to `.hoje/_session-{sessionid}/plans/`) → stop at `pending approval`. Execution is always a separate approval-gated step; deep-interview and ralplan never auto-invoke ultragoal or Hoje Goals strict mode just because a spec or plan exists.
+See the Phase 5b "Approval-Gated Refinement Path" diagram for the full flow. In short: interview → spec at `.hoje/_session-{sessionid}/specs/deep-interview-{slug}.md` → user selects "Refine with ralplan consensus" → `/hoje-code:hoje-plan` (Planner/Architect/Critic consensus, plan written to `.hoje/_session-{sessionid}/plans/`) → stop at `pending approval`. Execution is always a separate approval-gated step; deep-interview and ralplan never auto-invoke ultragoal or strict mode just because a spec or plan exists.
 
 ## Integration with Hoje Plan Gate
 
@@ -958,14 +1052,6 @@ The ralplan pre-approval gate already redirects vague prompts to planning. Deep 
 ```
 Vague prompt → ralplan gate → deep-interview (if extremely vague) → ralplan (with clear spec) → pending approval → explicitly approved execution
 ```
-
-## Brownfield vs Greenfield Weights
-
-See "Calculate ambiguity" in Step 2c for the weighted formulas. Brownfield adds a 15% Context Clarity dimension (Goal/Constraint/Criteria become 35/25/25) because safely modifying existing code requires understanding the system being changed.
-
-## Lateral Review Panel
-
-See Phase 3 for the full persona set (researcher/contrarian/simplifier, plus architect on scope change), the milestone bands, and the parallel independent-context dispatch.
 
 ## Ambiguity Score Interpretation
 
