@@ -1,0 +1,17 @@
+{
+  "name": "hoje-output",
+  "version": "0.1.0",
+  "description": "Claude Code 출력을 정규화하는 output style.\n\n내장 Proactive의 자율 실행 규칙을 그대로 유지한 채 응답 형식을 조입니다. 결론부터 쓰고, 최종 답변은 불릿 두세 개와 200자 내외로 제한하며, 이미 파일에 쓴 코드를 답변에 다시 붙이지 않습니다. 선택이나 승인을 요청할 때는 분량 제한이 풀립니다.\n\n한국어 응답 전용 규칙과 완료 보고 어미 규칙을 포함하므로 한국어 사용자에게 맞습니다. /output-style 에서 hoje-output 을 선택해 활성화하세요.",
+  "author": {
+    "name": "MrHoje"
+  },
+  "homepage": "https://github.com/MrHoje/devez-marketplace",
+  "repository": "https://github.com/MrHoje/devez-marketplace",
+  "license": "MIT",
+  "keywords": [
+    "output-style",
+    "korean",
+    "concise",
+    "proactive"
+  ]
+}
