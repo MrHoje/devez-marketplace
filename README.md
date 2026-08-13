@@ -7,6 +7,7 @@ Claude Code 플러그인 마켓플레이스
 | 플러그인 | 버전 | 설명 |
 |---------|------|------|
 | `hoje-code` | **v0.14.0** 🔥 | 독립형 deep-ask, gate-plan, run-goals 워크플로우 |
+| `hoje-output` | **v0.1.1** | 한국어 응답을 간결하게 정규화하고 활성화된 세션에 자동 적용하는 output style |
 
 ## 설치 방법
 
@@ -28,6 +29,7 @@ Claude Code 플러그인 마켓플레이스
 Claude Code에서:
 ```
 /plugin install hoje-code@hoje
+/plugin install hoje-output@hoje
 ```
 
 ## 포함 스킬
